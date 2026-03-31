@@ -15,6 +15,8 @@ const actionLabels: Record<string, string> = {
 };
 
 export function ActionBar({ currentActor, actions, busy, onReset, onAction }: ActionBarProps) {
+  const safeActions = actions ?? [];
+
   return (
     <section className="action-bar">
       <div className="action-meta">
@@ -24,7 +26,7 @@ export function ActionBar({ currentActor, actions, busy, onReset, onAction }: Ac
         <button type="button" className="secondary-button" onClick={onReset} disabled={busy}>
           新开一局
         </button>
-        {actions.map((action) => (
+        {safeActions.map((action) => (
           <button
             key={action}
             type="button"

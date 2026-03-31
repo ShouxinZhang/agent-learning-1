@@ -40,9 +40,27 @@
 建议采用如下结构：
 
 ```text
+backend/
+├── go.mod
+├── cmd/
+│   ├── tiandi-demo/
+│   │   └── main.go
+│   └── tiandi-server/
+│       └── main.go
+├── internal/
+│   └── tiandi/
+│       ├── demo/
+│       ├── domain/
+│       ├── fsm/
+│       ├── game/
+│       └── sortx/
+└── test/
+    └── backend/
+        ├── fsm_test.go
+        └── sortx_test.go
+
 web/
 ├── index.html
-├── package.json
 ├── tsconfig.json
 ├── tsconfig.node.json
 ├── vite.config.ts
@@ -60,11 +78,7 @@ web/
         └── BottomPanel.tsx
 
 test/
-├── package.json
 ├── vitest.config.ts
-├── backend/
-│   ├── fsm_test.go
-│   └── sortx_test.go
 └── web/
     └── app.test.tsx
 ```
@@ -117,7 +131,7 @@ test/
 建议增加：
 
 ```text
-internal/tiandi/sortx/
+backend/internal/tiandi/sortx/
 └── hand.go
 ```
 
@@ -148,12 +162,13 @@ internal/tiandi/sortx/
 3. 实现后端 `lipai` 模块。
 4. 实现 `state/reset/action` API 和 server。
 5. 创建 `web/` 下的 React + Vite 极简前端。
-6. 加入最小测试，并统一放进 `test/`。
+6. 加入最小测试，其中 Go 测试放进 `backend/test/`，前端测试保留在 `test/`。
 7. 联调：确保前端能请求后端并把“出牌前”流程完整走通。
 7. 验证：
-   - `go test ./...`
-   - `cd test && npm install && npm test`
-   - `cd web && npm run build`
+   - `cd backend && go test ./...`
+   - `npm install`
+   - `npm test`
+   - `npm run build`
 
 ## 8. 本次实现边界
 

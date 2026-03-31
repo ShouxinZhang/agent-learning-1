@@ -1,0 +1,30 @@
+{
+  "name": "agent-learning-1",
+  "private": true,
+  "scripts": {
+    "backend:dev": "cd backend && go run ./cmd/tiandi-server",
+    "backend:demo": "cd backend && go run ./cmd/tiandi-demo",
+    "backend:test": "cd backend && go test ./...",
+    "dev": "vite --config web/vite.config.ts",
+    "build": "tsc --noEmit -p web/tsconfig.json && vite build --config web/vite.config.ts",
+    "preview": "vite preview --config web/vite.config.ts",
+    "test": "vitest run --config test/vitest.config.ts"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^15.0.7",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^24.0.0",
+    "playwright": "^1.58.2",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.12",
+    "vitest": "^1.6.0"
+  }
+}

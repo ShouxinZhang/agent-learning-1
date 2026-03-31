@@ -181,6 +181,9 @@ func buildState(s fsm.Snapshot) StateResponse {
 	var resp StateResponse
 	resp.Phase = string(s.Phase)
 	resp.AvailableActions = availableActions(s.Phase)
+	if resp.AvailableActions == nil {
+		resp.AvailableActions = []string{}
+	}
 	resp.Multiplier = s.Multiplier
 	resp.Message = phaseMessage(s)
 	if s.HasLandlord {
@@ -231,7 +234,7 @@ func availableActions(phase fsm.Phase) []string {
 	case fsm.PhaseWoQiang:
 		return []string{string(fsm.ActionWoQiang), string(fsm.ActionBuQiang)}
 	default:
-		return nil
+		return []string{}
 	}
 }
 
