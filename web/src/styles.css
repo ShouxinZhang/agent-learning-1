@@ -1,0 +1,218 @@
+:root {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #f3efe6;
+  background:
+    radial-gradient(circle at top, rgba(199, 165, 93, 0.2), transparent 28%),
+    linear-gradient(180deg, #1d2a23 0%, #101612 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.metric,
+.status-card,
+.player-panel {
+  border: 1px solid rgba(255, 244, 217, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 250, 238, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.metric {
+  padding: 14px 16px;
+}
+
+.metric span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #d6ccb6;
+}
+
+.metric strong {
+  font-size: 22px;
+}
+
+.players-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.action-bar,
+.bottom-panel,
+.status-inline {
+  border: 1px solid rgba(255, 244, 217, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 250, 238, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.action-meta {
+  color: #f3efe6;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primary-button,
+.secondary-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button {
+  background: #f4c86b;
+  color: #231506;
+}
+
+.secondary-button {
+  background: rgba(239, 228, 207, 0.16);
+  color: #f3efe6;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-inline {
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.bottom-panel {
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.bottom-hidden {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(239, 228, 207, 0.16);
+  color: #f3efe6;
+}
+
+.player-panel {
+  padding: 14px;
+}
+
+.player-panel-landlord {
+  border-color: rgba(236, 192, 88, 0.64);
+  background: rgba(236, 192, 88, 0.1);
+}
+
+.player-panel-current {
+  border-color: rgba(113, 206, 153, 0.72);
+  box-shadow: 0 0 0 1px rgba(113, 206, 153, 0.18) inset;
+}
+
+.player-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.player-header span {
+  color: #d6ccb6;
+  font-size: 13px;
+}
+
+.card-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-chip {
+  min-width: 52px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #efe4cf;
+  color: #352317;
+  text-align: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.card-chip-laizi {
+  background: #f4c86b;
+  color: #231506;
+}
+
+.status-card {
+  padding: 24px;
+  margin-top: 20vh;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100vw - 20px, 100%);
+    padding-top: 16px;
+  }
+
+  .topbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .action-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-chip {
+    min-width: 46px;
+    padding: 7px 8px;
+    font-size: 12px;
+  }
+}
