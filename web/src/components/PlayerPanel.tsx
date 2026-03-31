@@ -3,9 +3,12 @@ import type { GamePlayer } from "../types";
 
 type PlayerPanelProps = {
   player: GamePlayer;
+  selectable?: boolean;
+  selectedIds?: string[];
+  onToggle?: (id: string) => void;
 };
 
-export function PlayerPanel({ player }: PlayerPanelProps) {
+export function PlayerPanel({ player, selectable = false, selectedIds = [], onToggle }: PlayerPanelProps) {
   return (
     <section
       className={[
@@ -22,7 +25,7 @@ export function PlayerPanel({ player }: PlayerPanelProps) {
         <span>{player.isCurrent ? "当前操作" : "等待中"}</span>
         <span>{player.cards.length} 张</span>
       </div>
-      <CardStrip cards={player.cards} />
+      <CardStrip cards={player.cards} selectable={selectable} selectedIds={selectedIds} onToggle={onToggle} />
     </section>
   );
 }

@@ -6,6 +6,7 @@ import (
 
 	"agent-dou-dizhu/internal/tiandi/domain"
 	"agent-dou-dizhu/internal/tiandi/game"
+	"agent-dou-dizhu/internal/tiandi/play"
 )
 
 type Phase string
@@ -43,11 +44,15 @@ const (
 	ActionQiangDiZhu ActionKind = "qiangdizhu"
 	ActionBuQiang    ActionKind = "buqiang"
 	ActionWoQiang    ActionKind = "woqiang"
+	ActionPlay       ActionKind = "play"
+	ActionPass       ActionKind = "pass"
 )
 
 type Action struct {
-	Seat domain.Seat
-	Kind ActionKind
+	Seat         domain.Seat
+	Kind         ActionKind
+	Cards        []domain.Card
+	ResolutionID string
 }
 
 type Snapshot struct {
@@ -67,6 +72,17 @@ type Snapshot struct {
 	HasLandlord       bool
 	Multiplier        int
 	Robbers           []domain.Seat
+	LeadingSeat       domain.Seat
+	LastPlaySeat      domain.Seat
+	HasCurrentTrick   bool
+	CurrentTrick      play.CurrentTrick
+	PassCount         int
+	Winner            domain.Seat
+	HasWinner         bool
+	LastResolvedHand  play.ResolvedHand
+	HasLastResolved   bool
+	LastCandidates    []play.ResolutionCandidate
+	LastPlayError     string
 }
 
 type Machine struct {
@@ -115,6 +131,8 @@ func (m *Machine) Apply(action Action) error {
 		return m.applyQiang(action)
 	case PhaseWoQiang:
 		return m.applyWoQiang(action)
+	case PhasePlay:
+		return m.applyPlay(action)
 	default:
 		return fmt.Errorf("phase %s does not accept player input", m.state.Phase)
 	}
@@ -131,10 +149,21 @@ func (m *Machine) Snapshot() Snapshot {
 	out.Bottom = append([]domain.Card(nil), m.state.Bottom...)
 	out.Hands = hands
 	out.Robbers = append([]domain.Seat(nil), m.state.Robbers...)
+	if m.state.HasCurrentTrick {
+		out.CurrentTrick.Cards = append([]domain.Card(nil), m.state.CurrentTrick.Cards...)
+		out.CurrentTrick.ResolvedHand = play.CloneResolvedHand(m.state.CurrentTrick.ResolvedHand)
+	}
+	out.LastCandidates = play.CloneCandidates(m.state.LastCandidates)
+	if m.state.HasLastResolved {
+		out.LastResolvedHand = play.CloneResolvedHand(m.state.LastResolvedHand)
+	}
 	return out
 }
 
 func (m *Machine) validateActor(seat domain.Seat) error {
+	if m.state.HasWinner {
+		return fmt.Errorf("game is already finished")
+	}
 	if !m.state.Phase.requiresInput() {
 		return fmt.Errorf("phase %s does not require player input", m.state.Phase)
 	}
@@ -204,6 +233,105 @@ func (m *Machine) applyWoQiang(action Action) error {
 	return m.advanceAuto()
 }
 
+func (m *Machine) applyPlay(action Action) error {
+	switch action.Kind {
+	case ActionPass:
+		return m.applyPass(action)
+	case ActionPlay:
+		return m.applyPlayCards(action)
+	default:
+		return fmt.Errorf("invalid play action %s", action.Kind)
+	}
+}
+
+func (m *Machine) applyPass(action Action) error {
+	if !m.state.HasCurrentTrick {
+		return fmt.Errorf("pass is only allowed when there is an active trick")
+	}
+	m.state.LastPlayError = ""
+	m.state.PassCount++
+	m.state.CurrentTrick.PassCount = m.state.PassCount
+	if m.state.PassCount >= 2 {
+		m.state.HasCurrentTrick = false
+		m.state.CurrentTrick = play.CurrentTrick{}
+		m.state.PassCount = 0
+		m.state.LeadingSeat = m.state.LastPlaySeat
+		m.state.CurrentActor = m.state.LastPlaySeat
+		return nil
+	}
+
+	m.state.CurrentActor = action.Seat.Next()
+	return nil
+}
+
+func (m *Machine) applyPlayCards(action Action) error {
+	if len(action.Cards) == 0 {
+		return fmt.Errorf("play action requires selected cards")
+	}
+	if err := ensureCardsOwned(m.state.Hands[action.Seat], action.Cards); err != nil {
+		return err
+	}
+
+	candidates, err := play.AnalyzeSelection(action.Cards, m.state.Laizi)
+	if err != nil {
+		m.state.LastPlayError = err.Error()
+		return err
+	}
+	selected := candidates[0]
+	if action.ResolutionID != "" {
+		for _, candidate := range candidates {
+			if candidate.ID == action.ResolutionID {
+				selected = candidate
+				break
+			}
+		}
+	}
+
+	if m.state.HasCurrentTrick {
+		ok, compareErr := play.Beats(selected.ResolvedHand, m.state.CurrentTrick.ResolvedHand)
+		if compareErr != nil {
+			m.state.LastPlayError = compareErr.Error()
+			return compareErr
+		}
+		if !ok {
+			m.state.LastPlayError = "selected cards do not beat the current trick"
+			return fmt.Errorf(m.state.LastPlayError)
+		}
+	} else {
+		m.state.LeadingSeat = action.Seat
+	}
+
+	nextHand, err := removeCards(m.state.Hands[action.Seat], action.Cards)
+	if err != nil {
+		m.state.LastPlayError = err.Error()
+		return err
+	}
+	m.state.Hands[action.Seat] = nextHand
+	m.state.LastPlaySeat = action.Seat
+	m.state.PassCount = 0
+	m.state.HasCurrentTrick = true
+	m.state.CurrentTrick = play.CurrentTrick{
+		LeadingSeat:  m.state.LeadingSeat,
+		LastPlaySeat: action.Seat,
+		Cards:        append([]domain.Card(nil), action.Cards...),
+		ResolvedHand: play.CloneResolvedHand(selected.ResolvedHand),
+		PassCount:    0,
+	}
+	m.state.LastResolvedHand = play.CloneResolvedHand(selected.ResolvedHand)
+	m.state.HasLastResolved = true
+	m.state.LastCandidates = play.CloneCandidates(candidates)
+	m.state.LastPlayError = ""
+
+	if len(nextHand) == 0 {
+		m.state.HasWinner = true
+		m.state.Winner = action.Seat
+		return nil
+	}
+
+	m.state.CurrentActor = action.Seat.Next()
+	return nil
+}
+
 func (m *Machine) prepareQiangPhase() {
 	m.qiangQueue = m.qiangQueue[:0]
 	seat := m.state.StartingBidder.Next()
@@ -263,6 +391,8 @@ func (m *Machine) advanceAuto() error {
 			m.state.Phase = PhaseShowTianLaizi
 		case PhaseShowTianLaizi:
 			m.state.TianLaiziRevealed = true
+			m.state.CurrentActor = m.state.Landlord
+			m.state.LeadingSeat = m.state.Landlord
 			m.state.Phase = PhasePlay
 			return nil
 		default:
@@ -286,8 +416,45 @@ func (m *Machine) enterFixedP0PlayTestMode() {
 	m.qiangIndex = 0
 	m.bidActions = 0
 	m.state.Phase = PhasePlay
+	m.state.LeadingSeat = domain.Seat0
 }
 
 func (p Phase) requiresInput() bool {
-	return p == PhaseBid || p == PhaseQiangDiZhu || p == PhaseWoQiang
+	return p == PhaseBid || p == PhaseQiangDiZhu || p == PhaseWoQiang || p == PhasePlay
+}
+
+func ensureCardsOwned(hand []domain.Card, selected []domain.Card) error {
+	remaining := append([]domain.Card(nil), hand...)
+	for _, card := range selected {
+		found := false
+		for index, owned := range remaining {
+			if owned == card {
+				remaining = append(remaining[:index], remaining[index+1:]...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("card %s is not in the current hand", card)
+		}
+	}
+	return nil
+}
+
+func removeCards(hand []domain.Card, selected []domain.Card) ([]domain.Card, error) {
+	out := append([]domain.Card(nil), hand...)
+	for _, card := range selected {
+		found := false
+		for index, owned := range out {
+			if owned == card {
+				out = append(out[:index], out[index+1:]...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("card %s is not in the current hand", card)
+		}
+	}
+	return out, nil
 }

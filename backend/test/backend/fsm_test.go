@@ -172,8 +172,11 @@ func TestFixedP0PlayTestModeStartsInPlay(t *testing.T) {
 	if len(s.Robbers) != 0 {
 		t.Fatalf("expected no robbers, got %d", len(s.Robbers))
 	}
-	if err := m.Apply(fsm.Action{Seat: domain.Seat0, Kind: fsm.ActionJiaoDiZhu}); err == nil {
-		t.Fatal("expected PLAY phase to reject player input")
+	if s.CurrentActor != domain.Seat0 {
+		t.Fatalf("expected current actor %s, got %s", domain.Seat0, s.CurrentActor)
+	}
+	if err := m.Apply(fsm.Action{Seat: domain.Seat0, Kind: fsm.ActionPass}); err == nil {
+		t.Fatal("expected pass without trick to be rejected")
 	}
 }
 
@@ -213,5 +216,8 @@ func TestFixedP0PlayTestModeEntersPlayImmediately(t *testing.T) {
 	}
 	if s.Mode != fsm.ModeFixedP0PlayTest {
 		t.Fatalf("expected mode %q, got %q", fsm.ModeFixedP0PlayTest, s.Mode)
+	}
+	if s.CurrentActor != domain.Seat0 {
+		t.Fatalf("expected current actor %s, got %s", domain.Seat0, s.CurrentActor)
 	}
 }

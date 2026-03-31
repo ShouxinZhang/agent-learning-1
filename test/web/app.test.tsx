@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "../../web/src/App";
-import type { GameState, RulesCatalog } from "../../web/src/types";
+import type { GameState, RulesCatalog, ResolvedHandView } from "../../web/src/types";
 
 afterEach(() => {
   cleanup();
@@ -12,11 +12,30 @@ afterEach(() => {
 
 function makeCards(count: number, prefix: string) {
   return Array.from({ length: count }, (_, index) => ({
+    id: `${prefix}-${index}`,
     label: `${prefix}-${index}`,
     suit: "heart",
     rank: "A",
     isLaizi: false,
   }));
+}
+
+function makeResolvedHand(label: string): ResolvedHandView {
+  return {
+    kind: "single",
+    label,
+    pattern: "A",
+    mainRank: "A",
+    length: 1,
+    groupCount: 1,
+    attachmentType: "",
+    compareKey: "A",
+    usesLaizi: false,
+    isBomb: false,
+    bombTier: 0,
+    cards: makeCards(1, `${label}-cards`),
+    resolvedCards: makeCards(1, `${label}-resolved`),
+  };
 }
 
 const bidState: GameState = {
@@ -37,35 +56,38 @@ const bidState: GameState = {
     count: 3,
     cards: [],
   },
+  resolutionCandidates: [],
+  playError: "",
+  winner: "",
   players: [
     {
       seat: "P0",
       isLandlord: false,
       isCurrent: true,
-      cards: [{ label: "heart-A", suit: "heart", rank: "A", isLaizi: false }],
+      cards: [{ id: "heart-A", label: "heart-A", suit: "heart", rank: "A", isLaizi: false }],
     },
     {
       seat: "P1",
       isLandlord: false,
       isCurrent: false,
-      cards: [{ label: "club-10", suit: "club", rank: "10", isLaizi: false }],
+      cards: [{ id: "club-10", label: "club-10", suit: "club", rank: "10", isLaizi: false }],
     },
     {
       seat: "P2",
       isLandlord: false,
       isCurrent: false,
-      cards: [{ label: "spade-3", suit: "spade", rank: "3", isLaizi: false }],
+      cards: [{ id: "spade-3", label: "spade-3", suit: "spade", rank: "3", isLaizi: false }],
     },
   ],
 };
 
 const playTestModeState: GameState = {
   phase: "PLAY",
-  currentActor: "",
-  availableActions: [],
+  currentActor: "P0",
+  availableActions: ["play"],
   landlord: "P0",
   multiplier: 1,
-  message: "测试模式：已直接进入 PLAY，地主固定为 P0",
+  message: "测试模式：已直接进入 PLAY，地主固定为 P0，可开始正式出牌",
   testMode: {
     enabled: true,
     label: "当前为测试模式 / 固定地主为 P0 / 直接进入 PLAY",
@@ -83,11 +105,14 @@ const playTestModeState: GameState = {
     count: 3,
     cards: makeCards(3, "bottom"),
   },
+  resolutionCandidates: [],
+  playError: "",
+  winner: "",
   players: [
     {
       seat: "P0",
       isLandlord: true,
-      isCurrent: false,
+      isCurrent: true,
       cards: makeCards(20, "p0"),
     },
     {
@@ -115,6 +140,57 @@ const qiangState: GameState = {
     ...player,
     isCurrent: player.seat === "P1",
   })),
+};
+
+const afterPlayState: GameState = {
+  ...playTestModeState,
+  currentActor: "P1",
+  availableActions: ["play", "pass"],
+  message: "P1 跟牌或不出",
+  currentTrick: {
+    leadingSeat: "P0",
+    lastPlaySeat: "P0",
+    passCount: 0,
+    cards: [{ id: "p0-0", label: "p0-0", suit: "heart", rank: "A", isLaizi: false }],
+    resolvedHand: makeResolvedHand("单张"),
+  },
+  resolvedHand: makeResolvedHand("单张"),
+  resolutionCandidates: [
+    {
+      id: "candidate-standard",
+      priority: 100,
+      isPreferred: true,
+      resolvedHand: makeResolvedHand("单张"),
+    },
+  ],
+  players: [
+    {
+      seat: "P0",
+      isLandlord: true,
+      isCurrent: false,
+      cards: makeCards(19, "p0"),
+    },
+    {
+      seat: "P1",
+      isLandlord: false,
+      isCurrent: true,
+      cards: makeCards(17, "p1"),
+    },
+    {
+      seat: "P2",
+      isLandlord: false,
+      isCurrent: false,
+      cards: makeCards(17, "p2"),
+    },
+  ],
+};
+
+const invalidPlayState: GameState = {
+  ...playTestModeState,
+  playError: "selected cards do not form a supported hand",
+  resolutionCandidates: [],
+  currentTrick: undefined,
+  resolvedHand: undefined,
 };
 
 const rulesCatalog: RulesCatalog = {
@@ -172,7 +248,7 @@ function fail(status: number) {
 }
 
 describe("App", () => {
-  it("loads game state and submits an action", async () => {
+  it("loads game state and submits a pre-play action", async () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => ok(bidState))
@@ -220,7 +296,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "叫地主" })).toBeInTheDocument();
   });
 
-  it("renders PLAY test mode without action buttons", async () => {
+  it("renders PLAY mode with selectable cards and play action", async () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => ok(playTestModeState))
@@ -231,16 +307,57 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("当前为测试模式 / 固定地主为 P0 / 直接进入 PLAY")).toBeInTheDocument();
-    expect(await screen.findByText("测试模式下当前无可执行动作")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "牌型规则" })).toBeInTheDocument();
-    expect(screen.getByText("测试模式：已直接进入 PLAY，地主固定为 P0")).toBeInTheDocument();
+    expect(screen.getByText("测试模式：已直接进入 PLAY，地主固定为 P0，可开始正式出牌")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "出牌" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "不出" })).not.toBeInTheDocument();
     expect(screen.getByText("20 张")).toBeInTheDocument();
-    expect(screen.getAllByText("地主")[0]).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新开一局" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "叫地主" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "抢地主" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "不叫" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "不抢" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "我抢" })).not.toBeInTheDocument();
+  });
+
+  it("submits selected cards during PLAY and renders current trick", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(playTestModeState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(afterPlayState));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "出牌" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "p0-0" }));
+    expect(screen.getByRole("button", { name: "出牌" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "出牌" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/game/action", expect.objectContaining({ method: "POST" }));
+    });
+
+    expect(await screen.findByText("当前桌面：P0 出了 单张")).toBeInTheDocument();
+    expect(screen.getByText("最近解析：单张 / 主牌 A")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "不出" })).toBeInTheDocument();
+  });
+
+  it("keeps the table rendered and shows inline play error for invalid PLAY action", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(playTestModeState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(invalidPlayState));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "p0-0" }));
+    await user.click(screen.getByRole("button", { name: "出牌" }));
+
+    expect(await screen.findByText("出牌失败：selected cards do not form a supported hand")).toBeInTheDocument();
+    expect(screen.getByText("当前操作人：P0")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "出牌" })).toBeDisabled();
+    expect(screen.queryByText(/^请求失败：/)).not.toBeInTheDocument();
   });
 });

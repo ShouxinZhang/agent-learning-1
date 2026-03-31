@@ -5,6 +5,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 type ActionPayload = {
   seat: string;
   kind: string;
+  cards?: string[];
+  resolutionId?: string;
 };
 
 async function readJson(response: Response): Promise<GameState> {

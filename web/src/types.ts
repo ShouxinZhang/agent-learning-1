@@ -1,4 +1,5 @@
 export type DemoCard = {
+  id: string;
   label: string;
   suit: string;
   rank: string;
@@ -31,12 +32,46 @@ export type GameState = {
     count: number;
     cards: DemoCard[];
   };
+  currentTrick?: {
+    leadingSeat: string;
+    lastPlaySeat: string;
+    passCount: number;
+    cards: DemoCard[];
+    resolvedHand: ResolvedHandView;
+  };
+  resolvedHand?: ResolvedHandView;
+  resolutionCandidates: ResolutionCandidateView[];
+  playError: string;
+  winner: string;
   testMode?: {
     enabled: boolean;
     label: string;
     fixedLandlord: string;
     directPlay: boolean;
   };
+};
+
+export type ResolvedHandView = {
+  kind: string;
+  label: string;
+  pattern: string;
+  mainRank: string;
+  length: number;
+  groupCount: number;
+  attachmentType: string;
+  compareKey: string;
+  usesLaizi: boolean;
+  isBomb: boolean;
+  bombTier: number;
+  cards: DemoCard[];
+  resolvedCards: DemoCard[];
+};
+
+export type ResolutionCandidateView = {
+  id: string;
+  priority: number;
+  isPreferred: boolean;
+  resolvedHand: ResolvedHandView;
 };
 
 export type RuleHand = {

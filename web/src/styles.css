@@ -334,6 +334,7 @@ body {
   min-width: 52px;
   padding: 8px 10px;
   border-radius: 10px;
+  border: 0;
   background: #efe4cf;
   color: #352317;
   text-align: center;
@@ -341,9 +342,28 @@ body {
   font-size: 13px;
 }
 
+.card-chip-selectable {
+  cursor: pointer;
+}
+
+.card-chip-selected {
+  box-shadow: 0 0 0 2px rgba(35, 21, 6, 0.9) inset;
+  transform: translateY(-2px);
+}
+
 .card-chip-laizi {
   background: #f4c86b;
   color: #231506;
+}
+
+.trick-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.error-copy {
+  color: #ffb3a0;
+  margin: 0;
 }
 
 .status-card {

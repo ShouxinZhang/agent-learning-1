@@ -36,14 +36,17 @@ func TestServiceReturnsTestModeState(t *testing.T) {
 	if !state.TestMode.DirectPlay {
 		t.Fatal("expected directPlay to be true")
 	}
-	if state.CurrentActor != "" {
-		t.Fatalf("expected no current actor, got %q", state.CurrentActor)
+	if state.CurrentActor != "P0" {
+		t.Fatalf("expected current actor P0, got %q", state.CurrentActor)
 	}
-	if len(state.AvailableActions) != 0 {
-		t.Fatalf("expected no available actions, got %d", len(state.AvailableActions))
+	if len(state.AvailableActions) != 1 || state.AvailableActions[0] != "play" {
+		t.Fatalf("expected available actions [play], got %#v", state.AvailableActions)
 	}
 	if !state.Bottom.Visible {
 		t.Fatal("expected bottom cards to be visible")
+	}
+	if state.CurrentTrick != nil {
+		t.Fatal("expected no current trick at the start of PLAY")
 	}
 	if len(state.Players) != 3 {
 		t.Fatalf("expected 3 players, got %d", len(state.Players))
@@ -69,5 +72,27 @@ func TestDefaultServiceDoesNotExposeTestMode(t *testing.T) {
 
 	if state.TestMode != nil {
 		t.Fatal("expected normal service state to omit testMode")
+	}
+}
+
+func TestServiceReturnsInlinePlayErrorForInvalidPass(t *testing.T) {
+	service, err := demo.NewServiceWithOptions(demo.ServiceOptions{Mode: fsm.ModeFixedP0PlayTest})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	state, err := service.Apply(demo.ActionRequest{Seat: "P0", Kind: "pass"})
+	if err != nil {
+		t.Fatalf("expected inline play error state, got err: %v", err)
+	}
+
+	if state.PlayError == "" {
+		t.Fatal("expected playError to be populated")
+	}
+	if state.CurrentActor != "P0" {
+		t.Fatalf("expected current actor to remain P0, got %q", state.CurrentActor)
+	}
+	if len(state.AvailableActions) != 1 || state.AvailableActions[0] != "play" {
+		t.Fatalf("expected available actions [play], got %#v", state.AvailableActions)
 	}
 }

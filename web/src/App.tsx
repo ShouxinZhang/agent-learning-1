@@ -3,6 +3,7 @@ import { applyGameAction, fetchGameState, resetGame } from "./api/game";
 import { fetchRulesCatalog } from "./api/rules";
 import { ActionBar } from "./components/ActionBar";
 import { BottomPanel } from "./components/BottomPanel";
+import { CurrentTrickPanel } from "./components/CurrentTrickPanel";
 import { PlayerPanel } from "./components/PlayerPanel";
 import { RulesPanel } from "./components/RulesPanel";
 import type { GameState, RulesCatalog } from "./types";
@@ -19,6 +20,7 @@ type LoadState =
 
 export default function App() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +48,7 @@ export default function App() {
             };
 
       setState({ status: "ready", data: gameResult.value, busy: false, rules });
+      setSelectedCardIds([]);
     });
 
     return () => {
@@ -62,6 +65,7 @@ export default function App() {
     try {
       const data = await job();
       setState({ status: "ready", data, busy: false, rules: state.rules });
+      setSelectedCardIds([]);
     } catch (error) {
       setState({
         status: "error",
@@ -79,6 +83,16 @@ export default function App() {
   }
 
   const { data, busy, rules } = state;
+  const currentPlayer = data.players.find((player) => player.seat === data.currentActor);
+  const selectedCards = currentPlayer?.cards.filter((card) => selectedCardIds.includes(card.id)) ?? [];
+  const toggleCard = (id: string) => {
+    if (busy) {
+      return;
+    }
+    setSelectedCardIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  };
 
   return (
     <main className="app-shell">
@@ -117,17 +131,27 @@ export default function App() {
             currentActor={data.currentActor}
             actions={data.availableActions}
             busy={busy}
+            selectedCount={selectedCardIds.length}
             idleMessage={data.testMode?.enabled ? "测试模式下当前无可执行动作" : "当前无可执行动作"}
             onReset={() => {
               void run(resetGame);
             }}
+            onClearSelection={() => {
+              setSelectedCardIds([]);
+            }}
             onAction={(kind) => {
-              void run(() =>
-                applyGameAction({
-                  seat: data.currentActor,
-                  kind,
-                }),
-              );
+              const payload =
+                kind === "play"
+                  ? {
+                      seat: data.currentActor,
+                      kind,
+                      cards: selectedCards.map((card) => card.id),
+                    }
+                  : {
+                      seat: data.currentActor,
+                      kind,
+                    };
+              void run(() => applyGameAction(payload));
             }}
           />
 
@@ -135,11 +159,25 @@ export default function App() {
             <strong>{data.message}</strong>
           </section>
 
+          <CurrentTrickPanel
+            trick={data.currentTrick}
+            resolvedHand={data.resolvedHand}
+            resolutionCandidates={data.resolutionCandidates}
+            playError={data.playError}
+            winner={data.winner}
+          />
+
           <BottomPanel visible={data.bottom.visible} count={data.bottom.count} cards={data.bottom.cards} />
 
           <section className="players-grid">
             {data.players.map((player) => (
-              <PlayerPanel key={player.seat} player={player} />
+              <PlayerPanel
+                key={player.seat}
+                player={player}
+                selectable={player.seat === data.currentActor && data.availableActions.includes("play")}
+                selectedIds={selectedCardIds}
+                onToggle={toggleCard}
+              />
             ))}
           </section>
         </section>

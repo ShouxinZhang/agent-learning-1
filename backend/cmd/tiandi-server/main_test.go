@@ -93,6 +93,12 @@ func TestHandleStateReturnsTestModePayload(t *testing.T) {
 	if !payload.Bottom.Visible {
 		t.Fatal("expected visible bottom cards")
 	}
+	if payload.CurrentActor != "P0" {
+		t.Fatalf("expected current actor P0, got %q", payload.CurrentActor)
+	}
+	if len(payload.AvailableActions) != 1 || payload.AvailableActions[0] != "play" {
+		t.Fatalf("expected available actions [play], got %#v", payload.AvailableActions)
+	}
 }
 
 func TestHandleStateReturnsTestModeMetadata(t *testing.T) {
@@ -132,5 +138,8 @@ func TestHandleStateReturnsTestModeMetadata(t *testing.T) {
 	}
 	if !payload.Bottom.Visible {
 		t.Fatal("expected bottom to be visible")
+	}
+	if payload.CurrentActor != "P0" {
+		t.Fatalf("currentActor: got %q want %q", payload.CurrentActor, "P0")
 	}
 }
