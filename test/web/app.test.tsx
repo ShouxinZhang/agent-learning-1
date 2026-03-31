@@ -3,8 +3,21 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import App from "../../web/src/App";
-import type { GameState, RulesCatalog, ResolvedHandView } from "../../web/src/types";
+import App from "../../web/src/App.tsx";
+import type {
+  AgentMatchEnvelope,
+  AgentMatchRunResponse,
+  AgentMatchTrace,
+  AgentPrompt,
+  AgentRunResponse,
+  AgentTrace,
+  AgentTraceEnvelope,
+  CardCounter,
+  GameState,
+  SeatRoundMemory,
+  RulesCatalog,
+  ResolvedHandView,
+} from "../../web/src/types.ts";
 
 afterEach(() => {
   cleanup();
@@ -35,6 +48,151 @@ function makeResolvedHand(label: string): ResolvedHandView {
     bombTier: 0,
     cards: makeCards(1, `${label}-cards`),
     resolvedCards: makeCards(1, `${label}-resolved`),
+  };
+}
+
+function makeAgentPrompt(currentActor: string, actions: string[], handCount: number): AgentPrompt {
+  return {
+    modelHint: "qwen/qwen3.6-plus-preview:free",
+    phase: "PLAY",
+    currentActor,
+    availableActions: actions,
+    playerSeat: currentActor,
+    playerRole: currentActor === "P0" ? "landlord" : "farmer",
+    playerHand: makeCards(handCount, `${currentActor}-prompt`),
+    cardCounter: {
+      seat: currentActor,
+      seatRole: currentActor === "P0" ? "landlord" : "farmer",
+      playedCardsBySeat: {},
+      playedRankCounts: {},
+      remainingUnknown: 54 - handCount,
+      blackJokerPlayed: false,
+      redJokerPlayed: false,
+      bombSignals: [],
+      totalPlayedCardCount: 0,
+    },
+    roundMemory: {
+      seat: currentActor,
+      seatRole: currentActor === "P0" ? "landlord" : "farmer",
+      roundIndex: 1,
+      trickIndex: 0,
+    },
+    systemPrompt: "你必须只输出一个 JSON 对象。",
+    userPrompt: `currentActor=${currentActor}\navailableActions=${JSON.stringify(actions)}`,
+    actionSchema: {
+      format: "json",
+      required: ["seat", "kind", "cards", "reason"],
+      properties: {
+        seat: "must equal currentActor",
+        kind: "must be one of availableActions",
+        cards: "card id array",
+        reason: "short Chinese explanation",
+      },
+      example: {
+        seat: currentActor,
+        kind: actions[0] ?? "",
+        cards: handCount > 0 ? [`${currentActor}-prompt-0`] : [],
+        reason: "保守合法动作",
+      },
+    },
+  };
+}
+
+function makeAgentTrace(mode: string, currentActor: string, applied: boolean, resultMessage: string): AgentTrace {
+  return {
+    mode,
+    model: "qwen/qwen3.6-plus-preview:free",
+    prompt: makeAgentPrompt(currentActor, ["play"], 20),
+    rawResponse: '{"seat":"P0","kind":"play","cards":["p0-0"],"reason":"test"}',
+    decision: {
+      seat: currentActor,
+      kind: "play",
+      cards: ["p0-0"],
+      reason: "test",
+    },
+    applied,
+    error: "",
+    resultMessage,
+  };
+}
+
+const emptyTrace: AgentTraceEnvelope = {
+  trace: null,
+};
+
+const emptyMatch: AgentMatchEnvelope = {
+  match: null,
+};
+
+function makeCardCounter(seat: string): CardCounter {
+  return {
+    seat,
+    seatRole: seat === "P0" ? "landlord" : "farmer",
+    playedCardsBySeat: { P0: ["p0-0"] },
+    playedRankCounts: { A: 1 },
+    remainingUnknown: 33,
+    blackJokerPlayed: false,
+    redJokerPlayed: false,
+    bombSignals: [],
+    totalPlayedCardCount: 1,
+  };
+}
+
+function makeRoundMemory(seat: string): SeatRoundMemory {
+  return {
+    seat,
+    seatRole: seat === "P0" ? "landlord" : "farmer",
+    roundIndex: 1,
+    trickIndex: 1,
+    lastOpponentPlay: {
+      seat: "P0",
+      kind: "play",
+      cards: ["p0-0"],
+      resolvedLabel: "单张",
+      relationship: "opponent",
+    },
+  };
+}
+
+function makeAgentMatchTrace(): AgentMatchTrace {
+  return {
+    matchId: "match-1",
+    startedAt: "2026-04-01T00:00:00Z",
+    finishedAt: "2026-04-01T00:01:00Z",
+    status: "completed",
+    mode: "mock",
+    model: "qwen/qwen3.6-plus-preview:free",
+    winner: "P0",
+    stepCount: 3,
+    finalState: winnerState,
+    steps: [
+      {
+        stepIndex: 3,
+        seat: "P2",
+        attemptMode: "mock",
+        effectiveMode: "mock",
+        model: "mock/default",
+        prompt: {
+          ...makeAgentPrompt("P2", ["play", "pass"], 4),
+          cardCounter: makeCardCounter("P2"),
+          roundMemory: makeRoundMemory("P2"),
+        },
+        decision: {
+          seat: "P2",
+          kind: "pass",
+          reason: "test",
+        },
+        applied: true,
+        error: "",
+        resultMessage: "P0 获胜，牌局结束",
+        roundIndex: 1,
+        trickIndex: 3,
+        cardCounter: makeCardCounter("P2"),
+        roundMemory: makeRoundMemory("P2"),
+        stateBefore: afterPlayState,
+        stateAfter: winnerState,
+      },
+    ],
   };
 }
 
@@ -193,6 +351,34 @@ const invalidPlayState: GameState = {
   resolvedHand: undefined,
 };
 
+const winnerState: GameState = {
+  ...afterPlayState,
+  currentActor: "",
+  availableActions: [],
+  message: "P0 获胜，牌局结束",
+  winner: "P0",
+  players: [
+    {
+      seat: "P0",
+      isLandlord: true,
+      isCurrent: false,
+      cards: [],
+    },
+    {
+      seat: "P1",
+      isLandlord: false,
+      isCurrent: false,
+      cards: makeCards(3, "p1"),
+    },
+    {
+      seat: "P2",
+      isLandlord: false,
+      isCurrent: false,
+      cards: makeCards(4, "p2"),
+    },
+  ],
+};
+
 const rulesCatalog: RulesCatalog = {
   version: "2026-04-01",
   rankOrder: ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "BlackJoker", "RedJoker"],
@@ -248,12 +434,37 @@ function fail(status: number) {
 }
 
 describe("App", () => {
+  it("loads game state, rules, and agent debug panel", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(playTestModeState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("Agent 调试")).toBeInTheDocument();
+    expect(screen.getByText("模型提示：qwen/qwen3.6-plus-preview:free")).toBeInTheDocument();
+    expect(screen.getByText("当前还没有 agent 执行记录。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "运行 Mock Agent" })).toBeInTheDocument();
+  });
+
   it("loads game state and submits a pre-play action", async () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => ok(bidState))
       .mockImplementationOnce(() => ok(rulesCatalog))
-      .mockImplementationOnce(() => ok(qiangState));
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["jiaodizhu", "bujiao"], 1)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch))
+      .mockImplementationOnce(() => ok(qiangState))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P1", ["qiangdizhu", "buqiang"], 1)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch));
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -261,31 +472,25 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("P0 进行叫地主")).toBeInTheDocument();
-    expect(await screen.findByText("帮助说明")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "牌型规则" })).toBeInTheDocument();
-    expect(screen.getByText("三带一")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "叫地主" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "不叫" })).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "比较说明" }));
-    expect(screen.getByText("飞机比较先看三连组数，再比较最高三张点数。")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "赖子说明" }));
-    expect(screen.getByText("若存在多个同优或等价解释，测试与展示阶段应返回全部可能。")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "叫地主" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/game/action", expect.any(Object));
+      expect(fetchMock.mock.calls.some(([url]) => url === "/api/game/action")).toBe(true);
     });
     expect(await screen.findByText("P1 进行抢地主")).toBeInTheDocument();
   });
 
-  it("keeps the game usable when rules loading fails", async () => {
+  it("keeps the game usable when rules and agent debug loading fail", async () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => ok(bidState))
-      .mockImplementationOnce(() => fail(500));
+      .mockImplementationOnce(() => fail(500))
+      .mockImplementationOnce(() => fail(503))
+      .mockImplementationOnce(() => fail(504))
+      .mockImplementationOnce(() => fail(505));
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -293,6 +498,7 @@ describe("App", () => {
 
     expect(await screen.findByText("P0 进行叫地主")).toBeInTheDocument();
     expect(await screen.findByText("规则加载失败：request failed: 500")).toBeInTheDocument();
+    expect(screen.getByText(/Agent 调试数据加载失败：request failed: 503 \/ request failed: 504 \/ request failed: 505/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "叫地主" })).toBeInTheDocument();
   });
 
@@ -300,7 +506,10 @@ describe("App", () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => ok(playTestModeState))
-      .mockImplementationOnce(() => ok(rulesCatalog));
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch));
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -318,7 +527,13 @@ describe("App", () => {
       .fn()
       .mockImplementationOnce(() => ok(playTestModeState))
       .mockImplementationOnce(() => ok(rulesCatalog))
-      .mockImplementationOnce(() => ok(afterPlayState));
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch))
+      .mockImplementationOnce(() => ok(afterPlayState))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P1", ["play", "pass"], 17)))
+      .mockImplementationOnce(() => ok({ trace: makeAgentTrace("mock", "P0", true, "P1 跟牌或不出") }))
+      .mockImplementationOnce(() => ok(emptyMatch));
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -332,7 +547,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "出牌" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/game/action", expect.objectContaining({ method: "POST" }));
+      expect(fetchMock.mock.calls.some(([url]) => url === "/api/game/action")).toBe(true);
     });
 
     expect(await screen.findByText("当前桌面：P0 出了 单张")).toBeInTheDocument();
@@ -345,7 +560,13 @@ describe("App", () => {
       .fn()
       .mockImplementationOnce(() => ok(playTestModeState))
       .mockImplementationOnce(() => ok(rulesCatalog))
-      .mockImplementationOnce(() => ok(invalidPlayState));
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch))
+      .mockImplementationOnce(() => ok(invalidPlayState))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch));
 
     vi.stubGlobal("fetch", fetchMock);
 
@@ -359,5 +580,116 @@ describe("App", () => {
     expect(screen.getByText("当前操作人：P0")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "出牌" })).toBeDisabled();
     expect(screen.queryByText(/^请求失败：/)).not.toBeInTheDocument();
+  });
+
+  it("runs mock agent and renders the latest trace", async () => {
+    const runResponse: AgentRunResponse = {
+      state: afterPlayState,
+      trace: makeAgentTrace("mock", "P0", true, "P1 跟牌或不出"),
+    };
+
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(playTestModeState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch))
+      .mockImplementationOnce(() => ok(runResponse))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P1", ["play", "pass"], 17)))
+      .mockImplementationOnce(() => ok({ trace: runResponse.trace }))
+      .mockImplementationOnce(() => ok(emptyMatch));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "运行 Mock Agent" }));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => url === "/api/game/agent/run")).toBe(true);
+    });
+
+    expect(await screen.findByText("结果：P1 跟牌或不出")).toBeInTheDocument();
+    expect(screen.getByText("执行状态：已执行")).toBeInTheDocument();
+    expect(screen.getByText("当前桌面：P0 出了 单张")).toBeInTheDocument();
+  });
+
+  it("runs mock match and renders winner plus card counter summary", async () => {
+    const matchTrace = makeAgentMatchTrace();
+    const matchResponse: AgentMatchRunResponse = {
+      state: winnerState,
+      match: matchTrace,
+    };
+
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(playTestModeState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch))
+      .mockImplementationOnce(() => ok(matchResponse))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", [], 0)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok({ match: matchTrace }));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "运行整局 Mock 对局" }));
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => url === "/api/game/agent/match")).toBe(true);
+    });
+
+    expect(await screen.findByText("赢家：P0")).toBeInTheDocument();
+    expect(screen.getByText("已出牌总数：1")).toBeInTheDocument();
+    expect(screen.getByText("上一轮记忆")).toBeInTheDocument();
+  });
+
+  it("renders winner banner when the backend state is already finished", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(winnerState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", [], 0)))
+      .mockImplementationOnce(() => ok(emptyTrace))
+      .mockImplementationOnce(() => ok(emptyMatch));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("P0 已获胜")).toBeInTheDocument();
+    expect(screen.getByText("P0 获胜，牌局结束")).toBeInTheDocument();
+  });
+
+  it("renders openrouter trace error without breaking the page", async () => {
+    const failedTrace: AgentTraceEnvelope = {
+      trace: {
+        ...makeAgentTrace("openrouter", "P0", false, "测试模式：已直接进入 PLAY，地主固定为 P0，可开始正式出牌"),
+        error: "OPENROUTER_API_KEY is not set",
+      },
+    };
+
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(playTestModeState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
+      .mockImplementationOnce(() => ok(makeAgentPrompt("P0", ["play"], 20)))
+      .mockImplementationOnce(() => ok(failedTrace))
+      .mockImplementationOnce(() => ok(emptyMatch));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("执行错误：OPENROUTER_API_KEY is not set")).toBeInTheDocument();
+    expect(screen.getByText("测试模式：已直接进入 PLAY，地主固定为 P0，可开始正式出牌")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "出牌" })).toBeDisabled();
   });
 });

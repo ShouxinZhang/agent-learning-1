@@ -42,6 +42,13 @@ body {
   min-width: 0;
 }
 
+.app-help {
+  display: grid;
+  gap: 14px;
+  position: sticky;
+  top: 24px;
+}
+
 .topbar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -79,6 +86,7 @@ body {
 }
 
 .action-bar,
+.agent-panel,
 .bottom-panel,
 .status-inline,
 .rules-panel {
@@ -138,11 +146,194 @@ body {
   margin-bottom: 14px;
 }
 
+.agent-panel {
+  padding: 16px;
+}
+
+.agent-card {
+  margin-top: 12px;
+}
+
+.agent-code {
+  margin: 10px 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(0, 0, 0, 0.18);
+  color: #f3efe6;
+  font: 12px/1.5 "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
+.agent-panel-header,
+.agent-section-heading,
+.agent-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-panel-header {
+  margin-bottom: 14px;
+}
+
+.agent-panel-header h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+
+.agent-panel-header p,
+.agent-section p,
+.agent-step p,
+.agent-error p {
+  margin: 0;
+  color: #d6ccb6;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.agent-toolbar {
+  margin-bottom: 14px;
+}
+
+.agent-section {
+  border-top: 1px solid rgba(255, 244, 217, 0.08);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.agent-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.agent-section-heading {
+  margin-bottom: 10px;
+}
+
+.agent-section-heading span {
+  color: #d6ccb6;
+  font-size: 12px;
+}
+
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-badge-idle {
+  background: rgba(239, 228, 207, 0.12);
+  color: #f3efe6;
+}
+
+.agent-badge-running {
+  background: rgba(93, 171, 255, 0.18);
+  color: #c9e4ff;
+}
+
+.agent-badge-success {
+  background: rgba(113, 206, 153, 0.18);
+  color: #b9f0cf;
+}
+
+.agent-badge-failed {
+  background: rgba(255, 124, 95, 0.16);
+  color: #ffcabd;
+}
+
+.agent-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.agent-list,
+.agent-steps {
+  display: grid;
+  gap: 10px;
+}
+
+.agent-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: #f3efe6;
+}
+
+.agent-step,
+.agent-error {
+  border: 1px solid rgba(255, 244, 217, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 250, 238, 0.04);
+  padding: 12px 14px;
+}
+
+.agent-seat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.agent-seat-card {
+  border: 1px solid rgba(255, 244, 217, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 250, 238, 0.04);
+  padding: 12px 14px;
+}
+
+.agent-seat-card strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.agent-seat-card p {
+  margin: 0;
+}
+
+.agent-seat-card p + p {
+  margin-top: 4px;
+}
+
+.agent-step strong,
+.agent-error strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.agent-details {
+  margin-top: 12px;
+}
+
+.agent-details summary {
+  cursor: pointer;
+  color: #f4c86b;
+  font-weight: 700;
+}
+
+.agent-details pre {
+  margin: 10px 0 0;
+  padding: 12px;
+  border-radius: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(0, 0, 0, 0.18);
+  color: #f3efe6;
+  font: 12px/1.5 "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
 .rules-panel {
   padding: 16px;
-  margin-bottom: 14px;
-  position: sticky;
-  top: 24px;
 }
 
 .rules-panel-header,
@@ -386,7 +577,7 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .rules-panel {
+  .app-help {
     position: static;
   }
 
@@ -396,11 +587,16 @@ body {
   }
 
   .rules-meta,
-  .rules-dual-grid {
+  .rules-dual-grid,
+  .agent-meta-grid,
+  .agent-seat-grid {
     grid-template-columns: 1fr;
   }
 
   .rule-item-top,
+  .agent-panel-header,
+  .agent-section-heading,
+  .agent-toolbar,
   .rules-panel-header,
   .rules-section-heading,
   .priority-item {

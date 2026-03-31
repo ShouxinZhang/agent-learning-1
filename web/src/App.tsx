@@ -1,12 +1,21 @@
 import { useEffect, useState } from "react";
+import {
+  fetchAgentMatchTrace,
+  fetchAgentPrompt,
+  fetchAgentTrace,
+  runMockAgent,
+  runMockAgentMatch,
+  runOpenRouterAgentMatch,
+} from "./api/agent";
 import { applyGameAction, fetchGameState, resetGame } from "./api/game";
 import { fetchRulesCatalog } from "./api/rules";
 import { ActionBar } from "./components/ActionBar";
+import { AgentDebugPanel } from "./components/AgentDebugPanel";
 import { BottomPanel } from "./components/BottomPanel";
 import { CurrentTrickPanel } from "./components/CurrentTrickPanel";
 import { PlayerPanel } from "./components/PlayerPanel";
 import { RulesPanel } from "./components/RulesPanel";
-import type { GameState, RulesCatalog } from "./types";
+import type { AgentMatchTrace, AgentPrompt, AgentTrace, GameState, RulesCatalog } from "./types";
 
 type RulesState =
   | { status: "loading" }
@@ -18,23 +27,61 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; data: GameState; busy: boolean; rules: RulesState };
 
+type AgentState = {
+  prompt?: AgentPrompt;
+  trace?: AgentTrace | null;
+  match?: AgentMatchTrace | null;
+  error?: string;
+  busy: boolean;
+};
+
+function messageFromError(error: unknown) {
+  return error instanceof Error ? error.message : "unknown error";
+}
+
+function combineAgentErrors(results: PromiseSettledResult<unknown>[]) {
+  const messages = results
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => messageFromError(result.reason));
+
+  return messages.length > 0 ? [...new Set(messages)].join(" / ") : undefined;
+}
+
 export default function App() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [agentState, setAgentState] = useState<AgentState>({ busy: false });
+
+  const refreshAgentDebug = async () => {
+    setAgentState((current) => ({ ...current, busy: true }));
+
+    const [promptResult, traceResult, matchResult] = await Promise.allSettled([
+      fetchAgentPrompt(),
+      fetchAgentTrace(),
+      fetchAgentMatchTrace(),
+    ]);
+    setAgentState({
+      prompt: promptResult.status === "fulfilled" ? promptResult.value : undefined,
+      trace: traceResult.status === "fulfilled" ? traceResult.value : undefined,
+      match: matchResult.status === "fulfilled" ? matchResult.value : undefined,
+      error: combineAgentErrors([promptResult, traceResult, matchResult]),
+      busy: false,
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.allSettled([fetchGameState(), fetchRulesCatalog()]).then((results) => {
+    Promise.allSettled([fetchGameState(), fetchRulesCatalog(), fetchAgentPrompt(), fetchAgentTrace(), fetchAgentMatchTrace()]).then((results) => {
       if (cancelled) {
         return;
       }
 
-      const [gameResult, rulesResult] = results;
+      const [gameResult, rulesResult, promptResult, traceResult, matchResult] = results;
       if (gameResult.status === "rejected") {
         setState({
           status: "error",
-          message: gameResult.reason instanceof Error ? gameResult.reason.message : "unknown error",
+          message: messageFromError(gameResult.reason),
         });
         return;
       }
@@ -42,13 +89,17 @@ export default function App() {
       const rules: RulesState =
         rulesResult.status === "fulfilled"
           ? { status: "ready", data: rulesResult.value }
-          : {
-              status: "error",
-              message: rulesResult.reason instanceof Error ? rulesResult.reason.message : "unknown error",
-            };
+          : { status: "error", message: messageFromError(rulesResult.reason) };
 
       setState({ status: "ready", data: gameResult.value, busy: false, rules });
       setSelectedCardIds([]);
+      setAgentState({
+        prompt: promptResult.status === "fulfilled" ? promptResult.value : undefined,
+        trace: traceResult.status === "fulfilled" ? traceResult.value : undefined,
+        match: matchResult.status === "fulfilled" ? matchResult.value : undefined,
+        error: combineAgentErrors([promptResult, traceResult, matchResult]),
+        busy: false,
+      });
     });
 
     return () => {
@@ -66,11 +117,90 @@ export default function App() {
       const data = await job();
       setState({ status: "ready", data, busy: false, rules: state.rules });
       setSelectedCardIds([]);
+      void refreshAgentDebug();
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "unknown error",
+        message: messageFromError(error),
       });
+    }
+  };
+
+  const handleRunMockAgent = async () => {
+    if (state.status !== "ready") {
+      return;
+    }
+
+    const nextRules = state.rules;
+    setAgentState((current) => ({ ...current, busy: true, error: undefined }));
+    try {
+      const result = await runMockAgent();
+      setState({ status: "ready", data: result.state, busy: false, rules: nextRules });
+      setSelectedCardIds([]);
+      setAgentState((current) => ({
+        ...current,
+        trace: result.trace,
+        busy: false,
+      }));
+      void refreshAgentDebug();
+    } catch (error) {
+      setAgentState((current) => ({
+        ...current,
+        busy: false,
+        error: messageFromError(error),
+      }));
+    }
+  };
+
+  const handleRunMockMatch = async () => {
+    if (state.status !== "ready") {
+      return;
+    }
+
+    const nextRules = state.rules;
+    setAgentState((current) => ({ ...current, busy: true, error: undefined }));
+    try {
+      const result = await runMockAgentMatch();
+      setState({ status: "ready", data: result.state, busy: false, rules: nextRules });
+      setSelectedCardIds([]);
+      setAgentState((current) => ({
+        ...current,
+        match: result.match,
+        busy: false,
+      }));
+      void refreshAgentDebug();
+    } catch (error) {
+      setAgentState((current) => ({
+        ...current,
+        busy: false,
+        error: messageFromError(error),
+      }));
+    }
+  };
+
+  const handleRunLLMMatch = async () => {
+    if (state.status !== "ready") {
+      return;
+    }
+
+    const nextRules = state.rules;
+    setAgentState((current) => ({ ...current, busy: true, error: undefined }));
+    try {
+      const result = await runOpenRouterAgentMatch();
+      setState({ status: "ready", data: result.state, busy: false, rules: nextRules });
+      setSelectedCardIds([]);
+      setAgentState((current) => ({
+        ...current,
+        match: result.match,
+        busy: false,
+      }));
+      void refreshAgentDebug();
+    } catch (error) {
+      setAgentState((current) => ({
+        ...current,
+        busy: false,
+        error: messageFromError(error),
+      }));
     }
   };
 
@@ -183,6 +313,25 @@ export default function App() {
         </section>
 
         <aside className="app-help">
+          <AgentDebugPanel
+            prompt={agentState.prompt}
+            trace={agentState.trace ?? null}
+            match={agentState.match ?? null}
+            error={agentState.error}
+            busy={busy || agentState.busy}
+            onRefresh={() => {
+              void refreshAgentDebug();
+            }}
+            onRunMock={() => {
+              void handleRunMockAgent();
+            }}
+            onRunMockMatch={() => {
+              void handleRunMockMatch();
+            }}
+            onRunLLMMatch={() => {
+              void handleRunLLMMatch();
+            }}
+          />
           {rules.status === "ready" ? (
             <RulesPanel catalog={rules.data} />
           ) : (

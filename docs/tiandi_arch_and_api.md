@@ -12,6 +12,12 @@ backend/
 │       └── main.go                # 命令行演示入口
 └── internal/
     └── tiandi/
+        ├── agent/
+        │   ├── types.go            # prompt / decision / trace DTO
+        │   ├── prompt.go           # LLM prompt builder
+        │   ├── match.go            # 整局 orchestrator、记牌器与单轮记忆跟踪
+        │   ├── decision.go         # 决策 JSON 解析、校验与 mock runner
+        │   └── openrouter.go       # OpenRouter Chat Completions 调用封装
         ├── demo/
         │   └── service.go          # 游戏服务层（状态/动作转换、testMode 输出）
         ├── domain/
@@ -33,11 +39,14 @@ backend/
             └── hand.go             # 自动理牌（赖子前置+排序）
 ├── test/
     └── backend/
+        ├── agent_test.go
         ├── fsm_test.go
         ├── play_test.go
         ├── rules_test.go
         ├── service_test.go
         └── sortx_test.go
+scripts/
+└── tiandi-agent.sh                 # bash 直玩脚本：单步 agent + 整局 match 的 state/run/trace/reset
 ```
 
 - `tiandi-server` 负责运行可调用 API 的内存态一局服务。
@@ -48,6 +57,7 @@ backend/
   - `fsm`（游戏流程）
   - `play`（出牌阶段判型、比较、桌面主牌、回合推进）
   - `demo`（服务层组装与对外状态转换）
+  - `agent`（LLM prompt、决策解析、mock/OpenRouter runner）
   - `rules`（规则主源与前端展示 DTO）
   - `sortx`（展示层用的手牌排序）
 
@@ -67,8 +77,10 @@ web/
     ├── api/
     │   └── game.ts               # 三个后端接口的调用封装
     │   └── rules.ts              # 规则目录接口调用封装
+    │   └── agent.ts              # agent prompt / trace / run + match 接口封装
     └── components/
         ├── ActionBar.tsx         # 操作按钮（叫抢地主 + PLAY 阶段出牌/不出/清空选择）
+        ├── AgentDebugPanel.tsx   # 单步 trace + 整局 match / 记牌器 / 单轮记忆展示
         ├── PlayerPanel.tsx       # 玩家展示块
         ├── CardStrip.tsx         # 手牌/底牌卡片列表，可选中当前行动位手牌
         ├── BottomPanel.tsx       # 底牌展示
@@ -77,7 +89,7 @@ web/
 ```
 
 测试目录（与前端功能协作）在：
-- `test/web/app.test.tsx`（集成式交互测试：首次加载、规则目录渲染、规则接口失败降级、PLAY 阶段选牌与出牌）
+- `test/web/app.test.tsx`（集成式交互测试：首次加载、规则目录渲染、agent 调试面板、PLAY 阶段选牌与 mock agent 执行）
 
 ## 3. 接口清单（前后端协作入口）
 
@@ -87,6 +99,14 @@ web/
 | `/api/game/reset` | `POST` | 无 | `GameState` | 重开一局，并返回新状态 |
 | `/api/game/action` | `POST` | `ActionRequest` | `GameState` | 提交一条动作并返回执行后的状态 |
 | `/api/game/rules` | `GET` | 无 | `RulesCatalog` | 获取牌型规则目录与优先级定义 |
+| `/api/game/agent/prompt` | `GET` | 无 | `PromptResponse` | 获取当前局面对应的 system/user prompt 与动作协议 |
+| `/api/game/agent/trace` | `GET` | 无 | `TraceEnvelope` | 获取最近一次 agent 执行轨迹 |
+| `/api/game/agent/run` | `POST` | `RunRequest` | `RunResponse` | 使用 `mock` 或 `openrouter` 运行一次 agent 决策并尝试提交动作 |
+| `/api/game/agent/match` | `GET/POST` | `MatchRunRequest?` | `MatchStateResponse` / `MatchRunResponse` | 兼容入口，支持查询整局状态或直接运行整局 |
+| `/api/game/agent/match/state` | `GET` | 无 | `MatchStateResponse` | 获取当前牌局状态和最近一次整局 trace |
+| `/api/game/agent/match/run` | `POST` | `MatchRunRequest` | `MatchRunResponse` | 让三个 seat 连续决策直到 `winner` 或超出 `maxSteps` |
+| `/api/game/agent/match/trace` | `GET` | 无 | `MatchEnvelope` | 获取最近一次整局执行 trace |
+| `/api/game/agent/match/reset` | `POST` | 无 | `MatchStateResponse` | 重开一局并清空最近一次整局 trace |
 
 - `ActionRequest`（后端 `demo.Service.Apply` 输入）
   - `seat: string`（`P0/P1/P2`）
@@ -124,10 +144,75 @@ web/
   - `sections[]`：按“基础牌型 / 组合牌型 / 连续牌型 / 飞机扩展 / 炸弹与特殊压制”分组
   - `bombPriority[]`
   - `handPriority[]`
+- `PromptResponse`
+  - `modelHint`
+  - `state`
+  - `phase`, `currentActor`, `availableActions`
+  - `playerSeat`, `playerRole`, `playerHand`
+  - `cardCounter`
+  - `roundMemory`
+  - `systemPrompt`, `userPrompt`
+  - `actionSchema`
+- `CardCounter`
+  - `playedCardsBySeat`
+  - `playedRankCounts`
+  - `remainingUnknown`
+  - `blackJokerPlayed`, `redJokerPlayed`
+  - `bombSignals`
+  - `totalPlayedCardCount`
+- `SeatRoundMemory`
+  - `seat`, `seatRole`
+  - `roundIndex`, `trickIndex`
+  - `lastSelfPlay`
+  - `lastTeammatePlay`
+  - `lastOpponentPlay`
+- `TraceEnvelope`
+  - `trace?`
+- `Trace`
+  - `runId`, `createdAt`
+  - `mode`, `model`
+  - `prompt`
+  - `rawResponse`
+  - `decision`
+  - `applied`
+  - `error`
+  - `resultMessage`
+  - `resultState?`
+- `RunRequest`
+  - `mode: "mock" | "openrouter"`
+  - `model?: string`
+- `RunResponse`
+  - `state`
+  - `trace`
+- `MatchRunRequest`
+  - `mode: "mock" | "openrouter"`
+  - `model?: string`
+  - `fallbackMode?: string`
+  - `maxSteps?: number`
+  - `resetGame?: boolean`
+- `MatchTrace`
+  - `matchId`, `startedAt`, `finishedAt`
+  - `status`, `mode`, `fallbackMode`, `model`
+  - `winner`
+  - `steps[]`
+  - `finalState?`
+  - `error?`
+  - `stepCount`
+- `MatchStep`
+  - `stepIndex`, `seat`
+  - `attemptMode`, `effectiveMode`, `model`
+  - `prompt`, `decision`, `applied`, `error`, `resultMessage`
+  - `roundIndex`, `trickIndex`
+  - `cardCounter`, `roundMemory`
+  - `stateBefore`, `stateAfter`
+- `MatchStateResponse`
+  - `state`
+  - `match?`
 
 ## 3.1 测试模式约定
 
 - 后端支持通过 `TIANDI_TEST_MODE=fixed_p0_play_test` 启用测试模式。
+- 后端支持通过 `TIANDI_SERVER_ADDR` 或 `PORT` 指定监听地址，便于并行跑多份本地服务做集成测试。
 - 测试模式下：
   - 洗牌仍随机
   - 底牌仍随机
@@ -142,11 +227,11 @@ web/
 ## 4. 协作流程（请求流）
 
 ### 4.1 页面初始化
-1. 前端 `App.tsx` `useEffect` 中并行调用 `fetchGameState()` 与 `fetchRulesCatalog()`。
-2. `api/game.ts` 发起 `GET /api/game/state`；`api/rules.ts` 发起 `GET /api/game/rules`。
-3. 后端 `tiandi-server/main.go` 分别路由到 `handleState` 与 `handleRules`。
-4. `handleState` 返回当前局面；`handleRules` 返回静态规则目录 `rules.Catalog`。
-5. 前端根据局面渲染 Header、testMode 提示区、ActionBar、玩家区与底牌区；规则目录成功时渲染 `RulesPanel`，失败时只在规则区域降级提示，不阻塞主界面。
+1. 前端 `App.tsx` `useEffect` 中并行调用 `fetchGameState()`、`fetchRulesCatalog()`、`fetchAgentPrompt()`、`fetchAgentTrace()` 与 `fetchAgentMatchTrace()`。
+2. `api/game.ts` 发起 `GET /api/game/state`；`api/rules.ts` 发起 `GET /api/game/rules`；`api/agent.ts` 发起 `GET /api/game/agent/prompt`、`GET /api/game/agent/trace` 与 `GET /api/game/agent/match/trace`。
+3. 后端 `tiandi-server/main.go` 分别路由到 `handleState`、`handleRules`、`handleAgentPrompt`、`handleAgentTrace`、`handleAgentMatchTrace`。
+4. `handleState` 返回当前局面；`handleRules` 返回静态规则目录；`handleAgentPrompt` 基于当前局面构造 prompt；`handleAgentTrace` 返回最近一次单步 trace；`handleAgentMatchTrace` 返回最近一次整局 trace。
+5. 前端根据局面渲染 Header、ActionBar、玩家区与底牌区；规则目录成功时渲染 `RulesPanel`；agent 调试接口成功时渲染 `AgentDebugPanel`，失败时只在调试区域降级提示，不阻塞主界面。
 
 ### 4.2 刷新局面 / 新开局
 1. 用户点击“新开一局”。
@@ -196,6 +281,45 @@ web/
    - `availableActions` 变为空
    - 局面进入结束态
 
+### 4.3.2 Agent Prompt / Trace 协作
+1. 后端 `agent.BuildPrompt(state, rules)` 生成固定的 `systemPrompt`、动态 `userPrompt`、动作 schema 和当前玩家手牌 id 列表。
+2. `GET /api/game/agent/prompt` 直接返回 `PromptResponse`，供 bash 脚本、前端调试面板或外部 LLM runner 消费。
+3. `POST /api/game/agent/run` 支持两种模式：
+   - `mock`：使用当前玩家第一张牌或第一条非出牌动作作为保守合法决策
+   - `openrouter`：向 OpenRouter `chat/completions` 发送 system/user prompt，并解析返回 JSON 动作
+4. 后端先保存 `Trace`，再校验 decision：
+   - `seat` 必须等于 `currentActor`
+   - `kind` 必须属于 `availableActions`
+   - `cards` 只能来自当前玩家手牌
+5. 校验通过后调用现有 `service.Apply`，把结果局面写入 `RunResponse.state`，并把执行结果回填到 `Trace`。
+6. 前端 `AgentDebugPanel` 和 `scripts/tiandi-agent.sh trace` 都通过 `GET /api/game/agent/trace` 读取最近一次 trace。
+
+### 4.3.3 整局 Agent Match 协作
+1. 前端或 bash 调用 `POST /api/game/agent/match/run`，或兼容地调用 `POST /api/game/agent/match`。
+2. 后端 `agent.Service.RunMatch(...)` 进入循环：
+   - 读取当前 `state`
+   - 为当前 `currentActor` 组装 seat-specific prompt
+   - 把完整当前手牌、`CardCounter`、`SeatRoundMemory` 注入 prompt
+   - 运行 `mock` 或 `openrouter`
+   - 决策合法后调用现有 `demo.Service.Apply(...)`
+3. 每一步都记录到 `MatchStep`：
+   - seat
+   - 决策前后状态
+   - 当前轮次/手次
+   - seat 对应的记牌器摘要
+   - seat 对应的单轮记忆
+4. 记牌器由后端根据公共已出牌信息增量更新；单轮记忆只保留当前轮的 `lastSelfPlay / lastTeammatePlay / lastOpponentPlay`，清轮后重置。
+5. 若 `openrouter` 调用失败且配置了 `fallbackMode`，本步会降级到 `mock`，但整局 trace 会保留 `attemptMode`、`effectiveMode` 和错误信息。
+6. 实际联调中，免费模型 `qwen/qwen3.6-plus-preview:free` 已验证可成功返回合法 JSON 并推进多手，但中后盘仍可能出现非法动作；因此整局自动化建议保留 `fallbackMode=mock` 作为兜底。
+7. 前端 `AgentDebugPanel` 用整局 trace 展示：
+   - winner
+   - stepCount
+   - 最近动作/结果
+   - 3 seat 剩余手牌
+   - 记牌器摘要
+   - 上一轮记忆
+8. bash 可通过 `scripts/tiandi-agent.sh match-state|match-run|match-run-mock|match-trace|match-reset` 观察同一份整局结果。
+
 ### 4.4 规则目录协作
 1. 后端规则主源在 `rules/book.go`。
 2. `rules/catalog.go` 作为前端展示 DTO，负责把规则主源映射成 `RulesCatalog`。
@@ -213,6 +337,9 @@ web/
 - 新增的牌型规则目录同样由后端统一定义，前端只负责渲染，不在前端重复维护炸弹优先级和牌型名称。
 - `testMode` 同样以后端为准，前端不从 `phase === PLAY && landlord === P0` 反推是否为测试模式。
 - 前端提交的 `cards` 只是原始牌 id；所有判型、比较、赖子求解都由后端负责。
+- agent prompt 也以后端为准，前端只展示 prompt 与 trace，不自行拼接规则摘要。
+- bash 脚本不做规则判断，只是对现有 HTTP 契约的命令行封装。
+- OpenRouter 缺少 `OPENROUTER_API_KEY` 时，后端保留 `openrouter` 模式入口，但会把错误写入 trace，而不是让前端或脚本崩溃。
 
 ## 6. 测试策略
 
@@ -237,23 +364,30 @@ web/
   - 验证 `GET /api/game/rules` 返回成功且 JSON 结构可解析。
   - 验证 `POST /api/game/rules` 被正确拒绝。
   - 验证测试模式下 `GET /api/game/state` 返回 `PLAY + P0 + testMode + play`。
+  - 验证 `GET /api/game/agent/prompt` 返回当前玩家、system prompt 和手牌摘要。
+  - 验证 `POST /api/game/agent/run` 在 `mock` 模式下能推进局面并写入 trace。
 - 前端模块测试：
   - `test/web/app.test.tsx`
   - 验证游戏状态与规则目录并行加载后的正常渲染。
+  - 验证 agent 调试面板加载 prompt 与 trace。
+  - 验证 agent 调试接口失败时主牌桌仍可继续使用。
   - 验证规则目录中的代表性牌型可见。
-  - 验证规则接口失败时主界面仍可继续使用。
   - 验证动作提交仍按既有 `/api/game/action` 路径工作。
   - 验证 `PLAY` 阶段可选牌并提交 `play` 请求。
   - 验证桌面已有主牌时显示 `不出`。
+  - 验证点击 `运行 Mock Agent` 后调试面板与牌桌同步刷新。
 - 浏览器联调验证：
   - 使用 Playwright interactive 流程验证真实页面。
-  - 验证真实页面可从叫抢地主流程进入 `PLAY`。
-  - 验证首出、桌面牌展示、`不出` 按钮出现、最近解析结果可见。
-  - 保留截图证据。
+  - 验证 Agent 调试面板可见。
+  - 验证点击 `运行 Mock Agent` 后页面可见最近 trace 与结果。
+  - 保留截图证据：`artifacts/playwright/11-agent-panel-before.png`、`artifacts/playwright/12-agent-panel-after.png`
 - 集成验证：
   - `go test ./...`
   - `npm test`
   - `npm run build`
+  - `./scripts/tiandi-agent.sh prompt`
+  - `./scripts/tiandi-agent.sh run-mock`
+  - `./scripts/tiandi-agent.sh trace`
 
 ## 7. 运行与联调环境说明
 

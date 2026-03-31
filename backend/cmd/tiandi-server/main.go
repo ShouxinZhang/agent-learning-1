@@ -3,24 +3,30 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"agent-dou-dizhu/internal/tiandi/agent"
 	"agent-dou-dizhu/internal/tiandi/demo"
 	"agent-dou-dizhu/internal/tiandi/fsm"
 )
 
 func main() {
+	loadDotEnv()
+
 	service, err := demo.NewServiceWithOptions(serviceOptionsFromEnv())
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	mux := newMux(service)
+	agentService := agent.NewService(service, agent.ServiceOptions{})
+	mux := newMux(service, agentService)
 
-	addr := ":8080"
+	addr := serverAddrFromEnv()
 	log.Printf("tiandi server listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
@@ -38,16 +44,38 @@ func serviceOptionsFromEnv() demo.ServiceOptions {
 	}
 }
 
-func newMux(service *demo.Service) *http.ServeMux {
+func serverAddrFromEnv() string {
+	if value := strings.TrimSpace(os.Getenv("TIANDI_SERVER_ADDR")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(os.Getenv("PORT")); value != "" {
+		if strings.HasPrefix(value, ":") {
+			return value
+		}
+		return ":" + value
+	}
+	return ":8080"
+}
+
+func newMux(service *demo.Service, agentService *agent.Service) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/game/state", withService(service, handleState))
 	mux.HandleFunc("/api/game/reset", withService(service, handleReset))
 	mux.HandleFunc("/api/game/action", withService(service, handleAction))
 	mux.HandleFunc("/api/game/rules", withService(service, handleRules))
+	mux.HandleFunc("/api/game/agent/prompt", withAgentService(agentService, handleAgentPrompt))
+	mux.HandleFunc("/api/game/agent/trace", withAgentService(agentService, handleAgentTrace))
+	mux.HandleFunc("/api/game/agent/run", withAgentService(agentService, handleAgentRun))
+	mux.HandleFunc("/api/game/agent/match", withAgentService(agentService, handleAgentMatch))
+	mux.HandleFunc("/api/game/agent/match/state", withAgentService(agentService, handleAgentMatchState))
+	mux.HandleFunc("/api/game/agent/match/run", withAgentService(agentService, handleAgentMatchRun))
+	mux.HandleFunc("/api/game/agent/match/trace", withAgentService(agentService, handleAgentMatchTrace))
+	mux.HandleFunc("/api/game/agent/match/reset", withAgentService(agentService, handleAgentMatchReset))
 	return mux
 }
 
 type handlerFunc func(service *demo.Service, w http.ResponseWriter, r *http.Request) error
+type agentHandlerFunc func(service *agent.Service, w http.ResponseWriter, r *http.Request) error
 
 func withService(service *demo.Service, handler handlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +90,26 @@ func withService(service *demo.Service, handler handlerFunc) http.HandlerFunc {
 			if errors.Is(err, errMethodNotAllowed) {
 				status = http.StatusMethodNotAllowed
 			} else if errors.Is(err, errBadRequest) {
+				status = http.StatusBadRequest
+			}
+			http.Error(w, err.Error(), status)
+		}
+	}
+}
+
+func withAgentService(service *agent.Service, handler agentHandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		setCommonHeaders(w)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		if err := handler(service, w, r); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, errMethodNotAllowed) {
+				status = http.StatusMethodNotAllowed
+			} else if errors.Is(err, errBadRequest) || errors.Is(err, agent.ErrUnsupportedMode) {
 				status = http.StatusBadRequest
 			}
 			http.Error(w, err.Error(), status)
@@ -123,6 +171,121 @@ func handleRules(service *demo.Service, w http.ResponseWriter, r *http.Request) 
 	return writeJSON(w, service.Rules())
 }
 
+func handleAgentPrompt(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodGet {
+		return errMethodNotAllowed
+	}
+
+	prompt, err := service.Prompt()
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, prompt)
+}
+
+func handleAgentTrace(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodGet {
+		return errMethodNotAllowed
+	}
+
+	return writeJSON(w, agent.TraceEnvelope{Trace: service.Trace()})
+}
+
+func handleAgentRun(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodPost {
+		return errMethodNotAllowed
+	}
+
+	var req agent.RunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		return errors.Join(errBadRequest, err)
+	}
+	resp, err := service.Run(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, agent.ErrUnsupportedMode) {
+			return errors.Join(errBadRequest, err)
+		}
+		return err
+	}
+	return writeJSON(w, resp)
+}
+
+func handleAgentMatch(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	switch r.Method {
+	case http.MethodGet:
+		resp, err := service.MatchState()
+		if err != nil {
+			return err
+		}
+		return writeJSON(w, resp)
+	case http.MethodPost:
+		var req agent.MatchRunRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			return errors.Join(errBadRequest, err)
+		}
+		resp, err := service.RunMatch(r.Context(), req)
+		if err != nil {
+			if errors.Is(err, agent.ErrUnsupportedMode) {
+				return errors.Join(errBadRequest, err)
+			}
+			return err
+		}
+		return writeJSON(w, resp)
+	default:
+		return errMethodNotAllowed
+	}
+}
+
+func handleAgentMatchState(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodGet {
+		return errMethodNotAllowed
+	}
+
+	resp, err := service.MatchState()
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, resp)
+}
+
+func handleAgentMatchRun(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodPost {
+		return errMethodNotAllowed
+	}
+
+	var req agent.MatchRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		return errors.Join(errBadRequest, err)
+	}
+	resp, err := service.RunMatch(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, agent.ErrUnsupportedMode) {
+			return errors.Join(errBadRequest, err)
+		}
+		return err
+	}
+	return writeJSON(w, resp)
+}
+
+func handleAgentMatchTrace(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodGet {
+		return errMethodNotAllowed
+	}
+	return writeJSON(w, agent.MatchEnvelope{Match: service.Match()})
+}
+
+func handleAgentMatchReset(service *agent.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodPost {
+		return errMethodNotAllowed
+	}
+
+	resp, err := service.ResetMatch()
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, resp)
+}
+
 func setCommonHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -132,4 +295,34 @@ func setCommonHeaders(w http.ResponseWriter) {
 
 func writeJSON(w http.ResponseWriter, payload any) error {
 	return json.NewEncoder(w).Encode(payload)
+}
+
+func loadDotEnv() {
+	candidates := []string{".env", filepath.Join("..", ".env")}
+	for _, candidate := range candidates {
+		data, err := os.ReadFile(candidate)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+				continue
+			}
+			key, value, ok := strings.Cut(line, "=")
+			if !ok {
+				continue
+			}
+			key = strings.TrimSpace(key)
+			value = strings.TrimSpace(value)
+			if key == "" {
+				continue
+			}
+			if _, exists := os.LookupEnv(key); exists {
+				continue
+			}
+			_ = os.Setenv(key, value)
+		}
+		return
+	}
 }
