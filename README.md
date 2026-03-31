@@ -30,7 +30,6 @@ docs/      规则说明、接口说明与任务文档
 - `docs/tiandi_arch_and_api.md`：架构与接口说明
 - `docs/tiandi_hands_rules.md`：牌型规则
 - `docs/tiandi_laizi_rules.md`：天地癞子规则
-- `docs/tiandi_web_task.md`：前端任务说明
 
 ## 环境说明
 
