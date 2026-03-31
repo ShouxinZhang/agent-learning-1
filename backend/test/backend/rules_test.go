@@ -10,22 +10,23 @@ func TestRulesCatalogContainsRequiredHands(t *testing.T) {
 	catalog := rules.CatalogData()
 
 	required := map[string]bool{
-		"single":                 false,
-		"pair":                   false,
-		"triple":                 false,
-		"triple_with_single":     false,
-		"triple_with_pair":       false,
-		"four_with_two_pairs":    false,
-		"straight":               false,
-		"serial_pairs":           false,
-		"plane_base":             false,
-		"plane_with_singles":     false,
-		"plane_with_pairs":       false,
-		"bomb_four":              false,
-		"bomb_five_plus":         false,
-		"rocket":                 false,
-		"pure_laizi_bomb":        false,
-		"laizi_substitute_bomb":  false,
+		"single":                false,
+		"pair":                  false,
+		"triple":                false,
+		"triple_with_single":    false,
+		"triple_with_pair":      false,
+		"four_with_two_pairs":   false,
+		"four_with_two_singles": false,
+		"straight":              false,
+		"serial_pairs":          false,
+		"plane_base":            false,
+		"plane_with_singles":    false,
+		"plane_with_pairs":      false,
+		"bomb_four":             false,
+		"bomb_five_plus":        false,
+		"rocket":                false,
+		"pure_laizi_bomb":       false,
+		"laizi_substitute_bomb": false,
 	}
 
 	for _, section := range catalog.Sections {
@@ -68,5 +69,15 @@ func TestRulesCatalogSequenceHighIsA(t *testing.T) {
 	catalog := rules.CatalogData()
 	if catalog.SequenceHigh != "A" {
 		t.Fatalf("sequence high: got %s want A", catalog.SequenceHigh)
+	}
+}
+
+func TestRulesCatalogContainsComparisonAndLaiziNotes(t *testing.T) {
+	catalog := rules.CatalogData()
+	if len(catalog.ComparisonNotes) == 0 {
+		t.Fatal("expected comparison notes")
+	}
+	if len(catalog.LaiziResolutionNotes) == 0 {
+		t.Fatal("expected laizi resolution notes")
 	}
 }

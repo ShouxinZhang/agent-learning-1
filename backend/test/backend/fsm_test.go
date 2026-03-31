@@ -137,3 +137,81 @@ func TestCandidateRetakesWithWoQiang(t *testing.T) {
 		t.Fatalf("expected multiplier 4, got %d", s.Multiplier)
 	}
 }
+
+func TestFixedP0PlayTestModeStartsInPlay(t *testing.T) {
+	m := fsm.NewMachineWithOptions(
+		rand.New(rand.NewSource(5)),
+		fsm.Options{Mode: fsm.ModeFixedP0PlayTest},
+	)
+	if err := m.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	s := m.Snapshot()
+	if s.Mode != fsm.ModeFixedP0PlayTest {
+		t.Fatalf("expected mode %s, got %s", fsm.ModeFixedP0PlayTest, s.Mode)
+	}
+	if s.Phase != fsm.PhasePlay {
+		t.Fatalf("expected PLAY phase, got %s", s.Phase)
+	}
+	if !s.HasLandlord {
+		t.Fatal("expected landlord to be assigned")
+	}
+	if s.Landlord != domain.Seat0 {
+		t.Fatalf("expected landlord P0, got %s", s.Landlord)
+	}
+	if len(s.Hands[domain.Seat0]) != 20 {
+		t.Fatalf("expected P0 to have 20 cards, got %d", len(s.Hands[domain.Seat0]))
+	}
+	if !s.DiLaiziRevealed || !s.TianLaiziRevealed {
+		t.Fatal("expected both laizi cards to be revealed")
+	}
+	if s.Multiplier != 1 {
+		t.Fatalf("expected multiplier 1, got %d", s.Multiplier)
+	}
+	if len(s.Robbers) != 0 {
+		t.Fatalf("expected no robbers, got %d", len(s.Robbers))
+	}
+	if err := m.Apply(fsm.Action{Seat: domain.Seat0, Kind: fsm.ActionJiaoDiZhu}); err == nil {
+		t.Fatal("expected PLAY phase to reject player input")
+	}
+}
+
+func TestFixedP0PlayTestModeEntersPlayImmediately(t *testing.T) {
+	m := fsm.NewMachineWithOptions(
+		rand.New(rand.NewSource(5)),
+		fsm.Options{Mode: fsm.ModeFixedP0PlayTest},
+	)
+	if err := m.Start(); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	s := m.Snapshot()
+	if s.Phase != fsm.PhasePlay {
+		t.Fatalf("expected PLAY phase, got %s", s.Phase)
+	}
+	if s.Landlord != domain.Seat0 {
+		t.Fatalf("expected landlord %s, got %s", domain.Seat0, s.Landlord)
+	}
+	if !s.HasLandlord {
+		t.Fatal("expected landlord to be decided")
+	}
+	if len(s.Hands[domain.Seat0]) != 20 {
+		t.Fatalf("expected P0 to have 20 cards, got %d", len(s.Hands[domain.Seat0]))
+	}
+	if !s.DiLaiziRevealed {
+		t.Fatal("expected di laizi to be revealed")
+	}
+	if !s.TianLaiziRevealed {
+		t.Fatal("expected tian laizi to be revealed")
+	}
+	if s.Multiplier != 1 {
+		t.Fatalf("expected multiplier 1, got %d", s.Multiplier)
+	}
+	if len(s.Robbers) != 0 {
+		t.Fatalf("expected no robbers, got %d", len(s.Robbers))
+	}
+	if s.Mode != fsm.ModeFixedP0PlayTest {
+		t.Fatalf("expected mode %q, got %q", fsm.ModeFixedP0PlayTest, s.Mode)
+	}
+}

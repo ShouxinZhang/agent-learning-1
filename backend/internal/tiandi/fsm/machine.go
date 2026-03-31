@@ -24,6 +24,17 @@ const (
 	PhasePlay          Phase = "PLAY"
 )
 
+type Mode string
+
+const (
+	ModeNormal          Mode = "normal"
+	ModeFixedP0PlayTest Mode = "fixed_p0_play_test"
+)
+
+type Options struct {
+	Mode Mode
+}
+
 type ActionKind string
 
 const (
@@ -40,6 +51,7 @@ type Action struct {
 }
 
 type Snapshot struct {
+	Mode              Mode
 	Phase             Phase
 	Deck              []domain.Card
 	Bottom            []domain.Card
@@ -59,6 +71,7 @@ type Snapshot struct {
 
 type Machine struct {
 	rng        *rand.Rand
+	options    Options
 	state      Snapshot
 	bidActions int
 	qiangQueue []domain.Seat
@@ -66,9 +79,19 @@ type Machine struct {
 }
 
 func NewMachine(rng *rand.Rand) *Machine {
+	return NewMachineWithOptions(rng, Options{Mode: ModeNormal})
+}
+
+func NewMachineWithOptions(rng *rand.Rand, opts Options) *Machine {
+	if opts.Mode == "" {
+		opts.Mode = ModeNormal
+	}
+
 	return &Machine{
-		rng: rng,
+		rng:     rng,
+		options: opts,
 		state: Snapshot{
+			Mode:       opts.Mode,
 			Phase:      PhaseShuffle,
 			Hands:      make(map[domain.Seat][]domain.Card, domain.PlayerCount),
 			Multiplier: 1,
@@ -224,6 +247,10 @@ func (m *Machine) advanceAuto() error {
 			m.state.DiLaiziRevealed = true
 			m.state.Phase = PhaseDeal
 		case PhaseDeal:
+			if m.options.Mode == ModeFixedP0PlayTest {
+				m.enterFixedP0PlayTestMode()
+				return nil
+			}
 			m.state.StartingBidder = domain.Seat(m.rng.Intn(domain.PlayerCount))
 			m.state.CurrentActor = m.state.StartingBidder
 			m.state.Phase = PhaseBid
@@ -242,6 +269,23 @@ func (m *Machine) advanceAuto() error {
 			return nil
 		}
 	}
+}
+
+func (m *Machine) enterFixedP0PlayTestMode() {
+	m.state.StartingBidder = domain.Seat0
+	m.state.CurrentActor = domain.Seat0
+	m.state.Landlord = domain.Seat0
+	m.state.HasLandlord = true
+	m.state.Hands[domain.Seat0] = append(m.state.Hands[domain.Seat0], m.state.Bottom...)
+	m.state.TianLaiziRevealed = true
+	m.state.Multiplier = 1
+	m.state.HasCandidate = false
+	m.state.Candidate = 0
+	m.state.Robbers = nil
+	m.qiangQueue = nil
+	m.qiangIndex = 0
+	m.bidActions = 0
+	m.state.Phase = PhasePlay
 }
 
 func (p Phase) requiresInput() bool {

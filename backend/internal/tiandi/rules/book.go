@@ -3,22 +3,23 @@ package rules
 type Kind string
 
 const (
-	KindSingle            Kind = "single"
-	KindPair              Kind = "pair"
-	KindTriple            Kind = "triple"
-	KindTripleWithSingle  Kind = "triple_with_single"
-	KindTripleWithPair    Kind = "triple_with_pair"
-	KindFourWithTwoPair   Kind = "four_with_two_pair"
-	KindStraight          Kind = "straight"
-	KindConsecutivePairs  Kind = "consecutive_pairs"
-	KindAirplane          Kind = "airplane"
-	KindAirplaneWithSolo  Kind = "airplane_with_solo"
-	KindAirplaneWithPairs Kind = "airplane_with_pairs"
-	KindBomb              Kind = "bomb"
-	KindFivePlusBomb      Kind = "five_plus_bomb"
-	KindRocket            Kind = "rocket"
-	KindPureLaiziBomb     Kind = "pure_laizi_bomb"
-	KindMixedLaiziBomb    Kind = "mixed_laizi_bomb"
+	KindSingle              Kind = "single"
+	KindPair                Kind = "pair"
+	KindTriple              Kind = "triple"
+	KindTripleWithSingle    Kind = "triple_with_single"
+	KindTripleWithPair      Kind = "triple_with_pair"
+	KindFourWithTwoPairs    Kind = "four_with_two_pairs"
+	KindFourWithTwoSingles  Kind = "four_with_two_singles"
+	KindStraight            Kind = "straight"
+	KindSerialPairs         Kind = "serial_pairs"
+	KindPlaneBase           Kind = "plane_base"
+	KindPlaneWithSingles    Kind = "plane_with_singles"
+	KindPlaneWithPairs      Kind = "plane_with_pairs"
+	KindBombFour            Kind = "bomb_four"
+	KindBombFivePlus        Kind = "bomb_five_plus"
+	KindRocket              Kind = "rocket"
+	KindPureLaiziBomb       Kind = "pure_laizi_bomb"
+	KindLaiziSubstituteBomb Kind = "laizi_substitute_bomb"
 )
 
 type Category string
@@ -50,6 +51,7 @@ type Definition struct {
 	AllowsRank2       bool       `json:"allowsRank2"`
 	AllowsJokers      bool       `json:"allowsJokers"`
 	SupportsLaizi     bool       `json:"supportsLaizi"`
+	CompareBy         string     `json:"compareBy,omitempty"`
 	Priority          int        `json:"priority"`
 	Notes             []string   `json:"notes"`
 }
@@ -123,8 +125,8 @@ func DefaultRuleBook() RuleBook {
 			Priority:      50,
 		},
 		{
-			Kind:          KindFourWithTwoPair,
-			Name:          "四带二/两对",
+			Kind:          KindFourWithTwoPairs,
+			Name:          "四带两对",
 			Category:      CategoryBasic,
 			MinCards:      8,
 			MaxCards:      8,
@@ -133,6 +135,20 @@ func DefaultRuleBook() RuleBook {
 			AllowsJokers:  false,
 			SupportsLaizi: true,
 			Priority:      55,
+			CompareBy:     "four_rank",
+		},
+		{
+			Kind:          KindFourWithTwoSingles,
+			Name:          "四带两单",
+			Category:      CategoryBasic,
+			MinCards:      6,
+			MaxCards:      6,
+			Attachment:    AttachmentSolo,
+			AllowsRank2:   true,
+			AllowsJokers:  true,
+			SupportsLaizi: true,
+			Priority:      56,
+			CompareBy:     "four_rank",
 		},
 		{
 			Kind:              KindStraight,
@@ -153,7 +169,7 @@ func DefaultRuleBook() RuleBook {
 			},
 		},
 		{
-			Kind:              KindConsecutivePairs,
+			Kind:              KindSerialPairs,
 			Name:              "连对",
 			Category:          CategorySequence,
 			MinCards:          6,
@@ -167,7 +183,7 @@ func DefaultRuleBook() RuleBook {
 			Priority:          70,
 		},
 		{
-			Kind:              KindAirplane,
+			Kind:              KindPlaneBase,
 			Name:              "飞机不带",
 			Category:          CategorySequence,
 			MinCards:          6,
@@ -178,10 +194,11 @@ func DefaultRuleBook() RuleBook {
 			AllowsRank2:       false,
 			AllowsJokers:      false,
 			SupportsLaizi:     true,
+			CompareBy:         "highest_triplet_rank",
 			Priority:          80,
 		},
 		{
-			Kind:              KindAirplaneWithSolo,
+			Kind:              KindPlaneWithSingles,
 			Name:              "飞机带两单",
 			Category:          CategorySequence,
 			MinCards:          8,
@@ -192,13 +209,14 @@ func DefaultRuleBook() RuleBook {
 			AllowsRank2:       false,
 			AllowsJokers:      true,
 			SupportsLaizi:     true,
+			CompareBy:         "highest_triplet_rank",
 			Priority:          85,
 			Notes: []string{
 				"每个三连带 1 张单牌",
 			},
 		},
 		{
-			Kind:              KindAirplaneWithPairs,
+			Kind:              KindPlaneWithPairs,
 			Name:              "飞机带一对",
 			Category:          CategorySequence,
 			MinCards:          10,
@@ -209,13 +227,14 @@ func DefaultRuleBook() RuleBook {
 			AllowsRank2:       false,
 			AllowsJokers:      false,
 			SupportsLaizi:     true,
+			CompareBy:         "highest_triplet_rank",
 			Priority:          90,
 			Notes: []string{
 				"每个三连带 1 对",
 			},
 		},
 		{
-			Kind:          KindMixedLaiziBomb,
+			Kind:          KindLaiziSubstituteBomb,
 			Name:          "赖子替代炸弹",
 			Category:      CategoryBomb,
 			MinCards:      4,
@@ -231,7 +250,7 @@ func DefaultRuleBook() RuleBook {
 			},
 		},
 		{
-			Kind:          KindBomb,
+			Kind:          KindBombFour,
 			Name:          "实心无赖子炸弹",
 			Category:      CategoryBomb,
 			MinCards:      4,
@@ -263,7 +282,7 @@ func DefaultRuleBook() RuleBook {
 			},
 		},
 		{
-			Kind:          KindFivePlusBomb,
+			Kind:          KindBombFivePlus,
 			Name:          "5+ 炸弹",
 			Category:      CategoryBomb,
 			MinCards:      5,
@@ -296,16 +315,17 @@ func DefaultRuleBook() RuleBook {
 
 	priority := []Kind{
 		KindRocket,
-		KindFivePlusBomb,
+		KindBombFivePlus,
 		KindPureLaiziBomb,
-		KindBomb,
-		KindMixedLaiziBomb,
-		KindAirplaneWithPairs,
-		KindAirplaneWithSolo,
-		KindAirplane,
+		KindBombFour,
+		KindLaiziSubstituteBomb,
+		KindPlaneWithPairs,
+		KindPlaneWithSingles,
+		KindPlaneBase,
 		KindStraight,
-		KindConsecutivePairs,
-		KindFourWithTwoPair,
+		KindSerialPairs,
+		KindFourWithTwoPairs,
+		KindFourWithTwoSingles,
 		KindTripleWithPair,
 		KindTripleWithSingle,
 		KindTriple,
@@ -315,10 +335,10 @@ func DefaultRuleBook() RuleBook {
 
 	bombPriority := []Kind{
 		KindRocket,
-		KindFivePlusBomb,
+		KindBombFivePlus,
 		KindPureLaiziBomb,
-		KindBomb,
-		KindMixedLaiziBomb,
+		KindBombFour,
+		KindLaiziSubstituteBomb,
 	}
 
 	return RuleBook{

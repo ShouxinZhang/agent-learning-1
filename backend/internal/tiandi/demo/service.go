@@ -32,6 +32,13 @@ type BottomView struct {
 	Cards   []CardView `json:"cards"`
 }
 
+type TestModeView struct {
+	Enabled       bool   `json:"enabled"`
+	Label         string `json:"label"`
+	FixedLandlord string `json:"fixedLandlord"`
+	DirectPlay    bool   `json:"directPlay"`
+}
+
 type StateResponse struct {
 	Phase            string       `json:"phase"`
 	CurrentActor     string       `json:"currentActor"`
@@ -46,7 +53,8 @@ type StateResponse struct {
 		TianVisible bool   `json:"tianVisible"`
 		DiVisible   bool   `json:"diVisible"`
 	} `json:"laizi"`
-	Bottom BottomView `json:"bottom"`
+	Bottom   BottomView    `json:"bottom"`
+	TestMode *TestModeView `json:"testMode,omitempty"`
 }
 
 type ActionRequest struct {
@@ -54,13 +62,26 @@ type ActionRequest struct {
 	Kind string `json:"kind"`
 }
 
+type ServiceOptions struct {
+	Mode fsm.Mode
+}
+
 type Service struct {
 	mu      sync.Mutex
 	machine *fsm.Machine
+	options ServiceOptions
 }
 
 func NewService() (*Service, error) {
-	svc := &Service{}
+	return NewServiceWithOptions(ServiceOptions{Mode: fsm.ModeNormal})
+}
+
+func NewServiceWithOptions(opts ServiceOptions) (*Service, error) {
+	if opts.Mode == "" {
+		opts.Mode = fsm.ModeNormal
+	}
+
+	svc := &Service{options: opts}
 	_, err := svc.Reset()
 	return svc, err
 }
@@ -69,7 +90,10 @@ func (s *Service) Reset() (StateResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	machine := fsm.NewMachine(rand.New(rand.NewSource(time.Now().UnixNano())))
+	machine := fsm.NewMachineWithOptions(
+		rand.New(rand.NewSource(time.Now().UnixNano())),
+		fsm.Options{Mode: s.options.Mode},
+	)
 	if err := machine.Start(); err != nil {
 		return StateResponse{}, err
 	}
@@ -197,6 +221,14 @@ func buildState(s fsm.Snapshot) StateResponse {
 	if len(resp.AvailableActions) > 0 {
 		resp.CurrentActor = s.CurrentActor.String()
 	}
+	if s.Mode == fsm.ModeFixedP0PlayTest {
+		resp.TestMode = &TestModeView{
+			Enabled:       true,
+			Label:         "当前为测试模式 / 固定地主为 P0 / 直接进入 PLAY",
+			FixedLandlord: domain.Seat0.String(),
+			DirectPlay:    true,
+		}
+	}
 
 	resp.Laizi.DiVisible = s.DiLaiziRevealed
 	resp.Laizi.TianVisible = s.TianLaiziRevealed
@@ -252,6 +284,9 @@ func phaseMessage(s fsm.Snapshot) string {
 	case fsm.PhaseWoQiang:
 		return fmt.Sprintf("%s 进行我抢确认", s.CurrentActor)
 	case fsm.PhasePlay:
+		if s.Mode == fsm.ModeFixedP0PlayTest {
+			return "测试模式：已直接进入 PLAY，地主固定为 P0"
+		}
 		return "已完成出牌前流程，等待正式出牌"
 	default:
 		return string(s.Phase)

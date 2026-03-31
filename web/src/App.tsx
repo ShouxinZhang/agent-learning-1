@@ -82,70 +82,83 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="metric">
-          <span>阶段</span>
-          <strong>{data.phase}</strong>
-        </div>
-        <div className="metric">
-          <span>天赖子</span>
-          <strong>{data.laizi.tian}</strong>
-        </div>
-        <div className="metric">
-          <span>地赖子</span>
-          <strong>{data.laizi.di}</strong>
-        </div>
-        <div className="metric">
-          <span>地主</span>
-          <strong>{data.landlord}</strong>
-        </div>
-        <div className="metric">
-          <span>倍数</span>
-          <strong>x{data.multiplier}</strong>
-        </div>
-      </header>
-
-      <ActionBar
-        currentActor={data.currentActor}
-        actions={data.availableActions}
-        busy={busy}
-        onReset={() => {
-          void run(resetGame);
-        }}
-        onAction={(kind) => {
-          void run(() =>
-            applyGameAction({
-              seat: data.currentActor,
-              kind,
-            }),
-          );
-        }}
-      />
-
-      <section className="status-inline">
-        <strong>{data.message}</strong>
-      </section>
-
-      {rules.status === "ready" ? (
-        <RulesPanel catalog={rules.data} />
-      ) : (
-        <section className="rules-panel">
-          <div className="rules-panel-header">
-            <div>
-              <h2>牌型规则</h2>
-              <p>{rules.status === "loading" ? "规则加载中..." : `规则加载失败：${rules.message}`}</p>
+      <div className="app-layout">
+        <section className="app-main">
+          <header className="topbar">
+            <div className="metric">
+              <span>阶段</span>
+              <strong>{data.phase}</strong>
             </div>
-          </div>
+            <div className="metric">
+              <span>天赖子</span>
+              <strong>{data.laizi.tian}</strong>
+            </div>
+            <div className="metric">
+              <span>地赖子</span>
+              <strong>{data.laizi.di}</strong>
+            </div>
+            <div className="metric">
+              <span>地主</span>
+              <strong>{data.landlord}</strong>
+            </div>
+            <div className="metric">
+              <span>倍数</span>
+              <strong>x{data.multiplier}</strong>
+            </div>
+          </header>
+
+          {data.testMode?.enabled ? (
+            <section className="status-inline">
+              <strong>{data.testMode.label}</strong>
+            </section>
+          ) : null}
+
+          <ActionBar
+            currentActor={data.currentActor}
+            actions={data.availableActions}
+            busy={busy}
+            idleMessage={data.testMode?.enabled ? "测试模式下当前无可执行动作" : "当前无可执行动作"}
+            onReset={() => {
+              void run(resetGame);
+            }}
+            onAction={(kind) => {
+              void run(() =>
+                applyGameAction({
+                  seat: data.currentActor,
+                  kind,
+                }),
+              );
+            }}
+          />
+
+          <section className="status-inline">
+            <strong>{data.message}</strong>
+          </section>
+
+          <BottomPanel visible={data.bottom.visible} count={data.bottom.count} cards={data.bottom.cards} />
+
+          <section className="players-grid">
+            {data.players.map((player) => (
+              <PlayerPanel key={player.seat} player={player} />
+            ))}
+          </section>
         </section>
-      )}
 
-      <BottomPanel visible={data.bottom.visible} count={data.bottom.count} cards={data.bottom.cards} />
-
-      <section className="players-grid">
-        {data.players.map((player) => (
-          <PlayerPanel key={player.seat} player={player} />
-        ))}
-      </section>
+        <aside className="app-help">
+          {rules.status === "ready" ? (
+            <RulesPanel catalog={rules.data} />
+          ) : (
+            <section className="rules-panel">
+              <div className="rules-panel-header">
+                <div>
+                  <h2>帮助说明</h2>
+                  <p>{rules.status === "loading" ? "规则加载中..." : `规则加载失败：${rules.message}`}</p>
+                </div>
+              </div>
+            </section>
+          )}
+        </aside>
+      </div>
     </main>
   );
 }

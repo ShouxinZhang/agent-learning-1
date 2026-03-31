@@ -1,13 +1,15 @@
 package rules
 
 type Catalog struct {
-	Version      string            `json:"version"`
-	RankOrder    []string          `json:"rankOrder"`
-	SequenceHigh string            `json:"sequenceHigh"`
-	Notes        []string          `json:"notes"`
-	Sections     []Section         `json:"sections"`
-	BombPriority []BombPriority    `json:"bombPriority"`
-	HandPriority []HandPriorityRef `json:"handPriority"`
+	Version              string            `json:"version"`
+	RankOrder            []string          `json:"rankOrder"`
+	SequenceHigh         string            `json:"sequenceHigh"`
+	Notes                []string          `json:"notes"`
+	ComparisonNotes      []string          `json:"comparisonNotes,omitempty"`
+	LaiziResolutionNotes []string          `json:"laiziResolutionNotes,omitempty"`
+	Sections             []Section         `json:"sections"`
+	BombPriority         []BombPriority    `json:"bombPriority"`
+	HandPriority         []HandPriorityRef `json:"handPriority"`
 }
 
 type Section struct {
@@ -21,6 +23,7 @@ type HandRule struct {
 	Name        string   `json:"name"`
 	Pattern     string   `json:"pattern"`
 	Description string   `json:"description"`
+	CompareBy   string   `json:"compareBy,omitempty"`
 	MinCards    int      `json:"minCards,omitempty"`
 	Notes       []string `json:"notes,omitempty"`
 }
@@ -49,6 +52,14 @@ func CatalogData() Catalog {
 			"王不可参与顺子、连对、飞机的点数延展。",
 			"当前规则目录用于前后端展示与后续判型实现，不直接等同于完整出牌引擎。",
 		},
+		ComparisonNotes: []string{
+			"飞机比较先看三连组数，再比较最高三张点数。",
+			"四带两单与四带两对视为不同结构，默认不可直接比较。",
+		},
+		LaiziResolutionNotes: []string{
+			"赖子仅替代非王点数。",
+			"若存在多个同优或等价解释，测试与展示阶段应返回全部可能。",
+		},
 		Sections: []Section{
 			{
 				Key:   "basic",
@@ -65,7 +76,8 @@ func CatalogData() Catalog {
 				Items: []HandRule{
 					{Key: "triple_with_single", Name: "三带一", Pattern: "AAA + B", Description: "三张同点数带 1 张单牌。", MinCards: 4},
 					{Key: "triple_with_pair", Name: "三带二", Pattern: "AAA + BB", Description: "三张同点数带 1 对。", MinCards: 5},
-					{Key: "four_with_two_pairs", Name: "四带二/两对", Pattern: "AAAA + BB + CC", Description: "四张同点数带两对。", MinCards: 8},
+					{Key: "four_with_two_pairs", Name: "四带两对", Pattern: "AAAA + BB + CC", Description: "四张同点数带两对。", CompareBy: "four_rank", MinCards: 8},
+					{Key: "four_with_two_singles", Name: "四带两单", Pattern: "AAAA + B + C", Description: "四张同点数带两张单牌。", CompareBy: "four_rank", MinCards: 6},
 				},
 			},
 			{
@@ -93,6 +105,7 @@ func CatalogData() Catalog {
 						Name:        "飞机不带",
 						Pattern:     "AAA BBB...",
 						Description: "至少 2 组连续三张。",
+						CompareBy:   "highest_triplet_rank",
 						MinCards:    6,
 						Notes:       []string{"可作为飞机带牌的主干。"},
 					},
@@ -107,6 +120,7 @@ func CatalogData() Catalog {
 						Name:        "飞机带两张单牌",
 						Pattern:     "AAA BBB + X + Y",
 						Description: "每组连续三张对应带 1 张单牌。",
+						CompareBy:   "highest_triplet_rank",
 						MinCards:    8,
 					},
 					{
@@ -114,6 +128,7 @@ func CatalogData() Catalog {
 						Name:        "飞机带一对",
 						Pattern:     "AAA BBB + BB + CC",
 						Description: "每组连续三张对应带 1 对。",
+						CompareBy:   "highest_triplet_rank",
 						MinCards:    10,
 					},
 				},

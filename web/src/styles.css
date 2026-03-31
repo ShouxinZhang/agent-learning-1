@@ -30,6 +30,18 @@ body {
   padding: 24px 0 40px;
 }
 
+.app-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.app-main,
+.app-help {
+  min-width: 0;
+}
+
 .topbar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -129,6 +141,8 @@ body {
 .rules-panel {
   padding: 16px;
   margin-bottom: 14px;
+  position: sticky;
+  top: 24px;
 }
 
 .rules-panel-header,
@@ -142,6 +156,31 @@ body {
 
 .rules-panel-header {
   margin-bottom: 14px;
+}
+
+.help-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.help-tab {
+  border: 1px solid rgba(255, 244, 217, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 250, 238, 0.04);
+  color: #d6ccb6;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.help-tab-active {
+  background: #f4c86b;
+  color: #231506;
+  border-color: transparent;
 }
 
 .rules-panel-header h2 {
@@ -321,6 +360,14 @@ body {
 
   .topbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .rules-panel {
+    position: static;
   }
 
   .action-bar {

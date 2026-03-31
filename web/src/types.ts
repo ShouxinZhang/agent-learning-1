@@ -31,6 +31,12 @@ export type GameState = {
     count: number;
     cards: DemoCard[];
   };
+  testMode?: {
+    enabled: boolean;
+    label: string;
+    fixedLandlord: string;
+    directPlay: boolean;
+  };
 };
 
 export type RuleHand = {
@@ -38,6 +44,7 @@ export type RuleHand = {
   name: string;
   pattern: string;
   description: string;
+  compareBy?: string;
   minCards?: number;
   notes?: string[];
 };
@@ -67,6 +74,8 @@ export type RulesCatalog = {
   rankOrder: string[];
   sequenceHigh: string;
   notes: string[];
+  comparisonNotes?: string[];
+  laiziResolutionNotes?: string[];
   sections: RuleSection[];
   bombPriority: BombPriority[];
   handPriority: HandPriorityRef[];

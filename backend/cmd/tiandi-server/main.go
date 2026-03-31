@@ -5,12 +5,15 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"agent-dou-dizhu/internal/tiandi/demo"
+	"agent-dou-dizhu/internal/tiandi/fsm"
 )
 
 func main() {
-	service, err := demo.NewService()
+	service, err := demo.NewServiceWithOptions(serviceOptionsFromEnv())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -20,6 +23,19 @@ func main() {
 	addr := ":8080"
 	log.Printf("tiandi server listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
+}
+
+func serviceOptionsFromEnv() demo.ServiceOptions {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv("TIANDI_TEST_MODE")))
+	switch raw {
+	case "", "0", "false", "off", "normal":
+		return demo.ServiceOptions{Mode: fsm.ModeNormal}
+	case "1", "true", "on", "fixed_p0_play_test":
+		return demo.ServiceOptions{Mode: fsm.ModeFixedP0PlayTest}
+	default:
+		log.Printf("unknown TIANDI_TEST_MODE=%q, falling back to normal mode", raw)
+		return demo.ServiceOptions{Mode: fsm.ModeNormal}
+	}
 }
 
 func newMux(service *demo.Service) *http.ServeMux {
