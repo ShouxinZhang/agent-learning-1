@@ -22,11 +22,14 @@ backend/
         │   └── machine.go          # 状态机：洗牌/发牌/选赖子/叫地主/抢地主/我抢
         ├── game/
         │   └── session.go          # 手牌分配与摸牌逻辑
+        ├── rules/
+        │   └── catalog.go          # 牌型规则目录、优先级与前端展示 DTO
         └── sortx/
             └── hand.go             # 自动理牌（赖子前置+排序）
 ├── test/
     └── backend/
         ├── fsm_test.go
+        ├── rules_test.go
         └── sortx_test.go
 ```
 
@@ -37,6 +40,7 @@ backend/
   - `game`（会话数据构建）
   - `fsm`（游戏流程）
   - `demo`（服务层组装与对外状态转换）
+  - `rules`（牌型规则目录与优先级元数据）
   - `sortx`（展示层用的手牌排序）
 
 ## 2. 仓库前端模块树（核心源代码）
@@ -54,15 +58,17 @@ web/
     ├── types.ts                  # 前后端状态类型定义
     ├── api/
     │   └── game.ts               # 三个后端接口的调用封装
+    │   └── rules.ts              # 规则目录接口调用封装
     └── components/
         ├── ActionBar.tsx         # 操作按钮（叫地主/不叫/抢地主/不抢/我抢）
         ├── PlayerPanel.tsx       # 玩家展示块
         ├── CardStrip.tsx         # 手牌/底牌卡片列表
         └── BottomPanel.tsx       # 底牌展示
+        └── RulesPanel.tsx        # 牌型规则展示面板
 ```
 
 测试目录（与前端功能协作）在：
-- `test/web/app.test.tsx`（集成式交互测试：首次加载与“叫地主”动作）
+- `test/web/app.test.tsx`（集成式交互测试：首次加载、规则目录渲染、规则接口失败降级、动作提交流程）
 
 ## 3. 接口清单（前后端协作入口）
 
@@ -71,6 +77,7 @@ web/
 | `/api/game/state` | `GET` | 无 | `GameState` | 获取当前局面状态 |
 | `/api/game/reset` | `POST` | 无 | `GameState` | 重开一局，并返回新状态 |
 | `/api/game/action` | `POST` | `ActionRequest` | `GameState` | 提交一条动作并返回执行后的状态 |
+| `/api/game/rules` | `GET` | 无 | `RulesCatalog` | 获取牌型规则目录与优先级定义 |
 
 - `ActionRequest`（后端 `demo.Service.Apply` 输入）
   - `seat: string`（`P0/P1/P2`）
@@ -81,15 +88,23 @@ web/
   - `landlord`, `multiplier`
   - `laizi`（`tian/di`, `tianVisible/diVisible`）
   - `bottom`（`visible/count/cards`）
+- `RulesCatalog`（前端 `web/src/types.ts`）核心字段
+  - `version`
+  - `rankOrder`
+  - `sequenceHigh`（当前为 `A`，表示顺子最高到 `A`）
+  - `notes[]`
+  - `sections[]`：按“基础牌型 / 组合牌型 / 连续牌型 / 飞机扩展 / 炸弹与特殊压制”分组
+  - `bombPriority[]`
+  - `handPriority[]`
 
 ## 4. 协作流程（请求流）
 
 ### 4.1 页面初始化
-1. 前端 `App.tsx` `useEffect` 中调用 `fetchGameState()`。
-2. `api/game.ts` 发起 `GET /api/game/state`。
-3. 后端 `tiandi-server/main.go` 路由到 `handleState`。
-4. 服务层返回 `demo.StateResponse`。
-5. 前端根据返回填充 Header、ActionBar、三名玩家、底牌区。
+1. 前端 `App.tsx` `useEffect` 中并行调用 `fetchGameState()` 与 `fetchRulesCatalog()`。
+2. `api/game.ts` 发起 `GET /api/game/state`；`api/rules.ts` 发起 `GET /api/game/rules`。
+3. 后端 `tiandi-server/main.go` 分别路由到 `handleState` 与 `handleRules`。
+4. `handleState` 返回当前局面；`handleRules` 返回静态规则目录 `rules.Catalog`。
+5. 前端根据局面渲染 Header、ActionBar、玩家区与底牌区；规则目录成功时渲染 `RulesPanel`，失败时只在规则区域降级提示，不阻塞主界面。
 
 ### 4.2 刷新局面 / 新开局
 1. 用户点击“新开一局”。
@@ -113,8 +128,31 @@ web/
 - 服务器侧在 `service.buildState` 中调用 `sortx.SortedHand` 做排序，前端直接按收到顺序渲染。
 - 因此 `CardStrip` 只做展示组件，不再包含排序、规则判断。
 - 赖子标注也来源于后端标注后的 `CardView.isLaizi`。
+- 新增的牌型规则目录同样由后端统一定义，前端只负责渲染，不在前端重复维护炸弹优先级和牌型名称。
 
-## 6. 运行与联调环境说明
+## 6. 测试策略
+
+- 后端规则模块单测：
+  - `backend/test/backend/rules_test.go`
+  - 验证必需牌型是否全部存在。
+  - 验证炸弹优先级顺序是否与规则文档一致。
+  - 验证顺子最高点 `sequenceHigh` 是否为 `A`。
+- 后端 HTTP 接口测试：
+  - `backend/cmd/tiandi-server/main_test.go`
+  - 验证 `GET /api/game/rules` 返回成功且 JSON 结构可解析。
+  - 验证 `POST /api/game/rules` 被正确拒绝。
+- 前端模块测试：
+  - `test/web/app.test.tsx`
+  - 验证游戏状态与规则目录并行加载后的正常渲染。
+  - 验证规则目录中的代表性牌型可见。
+  - 验证规则接口失败时主界面仍可继续使用。
+  - 验证动作提交仍按既有 `/api/game/action` 路径工作。
+- 集成验证：
+  - `go test ./...`
+  - `npm test`
+  - `npm run build`
+
+## 7. 运行与联调环境说明
 
 - 前端默认通过 `import.meta.env.VITE_API_BASE_URL` 组装接口。
 - 开发模式下 `web/vite.config.ts` 已配置：

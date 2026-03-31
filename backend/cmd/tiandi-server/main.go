@@ -15,14 +15,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/game/state", withService(service, handleState))
-	mux.HandleFunc("/api/game/reset", withService(service, handleReset))
-	mux.HandleFunc("/api/game/action", withService(service, handleAction))
+	mux := newMux(service)
 
 	addr := ":8080"
 	log.Printf("tiandi server listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
+}
+
+func newMux(service *demo.Service) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/game/state", withService(service, handleState))
+	mux.HandleFunc("/api/game/reset", withService(service, handleReset))
+	mux.HandleFunc("/api/game/action", withService(service, handleAction))
+	mux.HandleFunc("/api/game/rules", withService(service, handleRules))
+	return mux
 }
 
 type handlerFunc func(service *demo.Service, w http.ResponseWriter, r *http.Request) error
@@ -91,6 +97,14 @@ func handleAction(service *demo.Service, w http.ResponseWriter, r *http.Request)
 		return errors.Join(errBadRequest, err)
 	}
 	return writeJSON(w, state)
+}
+
+func handleRules(service *demo.Service, w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodGet {
+		return errMethodNotAllowed
+	}
+
+	return writeJSON(w, service.Rules())
 }
 
 func setCommonHeaders(w http.ResponseWriter) {

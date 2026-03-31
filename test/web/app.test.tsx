@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "../../web/src/App";
-import type { GameState } from "../../web/src/types";
+import type { GameState, RulesCatalog } from "../../web/src/types";
 
 afterEach(() => {
   cleanup();
@@ -62,10 +62,55 @@ const qiangState: GameState = {
   })),
 };
 
+const rulesCatalog: RulesCatalog = {
+  version: "2026-04-01",
+  rankOrder: ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "BlackJoker", "RedJoker"],
+  sequenceHigh: "A",
+  notes: ["牌型比较默认只比较主序列或关键牌。"],
+  sections: [
+    {
+      key: "combo",
+      title: "组合牌型",
+      items: [
+        {
+          key: "triple_with_single",
+          name: "三带一",
+          pattern: "AAA + B",
+          description: "三张同点数带 1 张单牌。",
+          minCards: 4,
+        },
+      ],
+    },
+  ],
+  bombPriority: [
+    {
+      rank: 1,
+      key: "rocket",
+      name: "王炸",
+      description: "最高牌型，压过全部普通炸弹。",
+    },
+  ],
+  handPriority: [
+    {
+      rank: 1,
+      key: "rocket",
+      name: "王炸",
+    },
+  ],
+};
+
 function ok(data: unknown) {
   return Promise.resolve({
     ok: true,
     json: async () => data,
+  } as Response);
+}
+
+function fail(status: number) {
+  return Promise.resolve({
+    ok: false,
+    status,
+    json: async () => ({}),
   } as Response);
 }
 
@@ -74,6 +119,7 @@ describe("App", () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => ok(bidState))
+      .mockImplementationOnce(() => ok(rulesCatalog))
       .mockImplementationOnce(() => ok(qiangState));
 
     vi.stubGlobal("fetch", fetchMock);
@@ -82,14 +128,31 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByText("P0 进行叫地主")).toBeInTheDocument();
+    expect(await screen.findByText("牌型规则")).toBeInTheDocument();
+    expect(screen.getByText("三带一")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "叫地主" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "不叫" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "叫地主" }));
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/game/action", expect.any(Object));
+      expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/game/action", expect.any(Object));
     });
     expect(await screen.findByText("P1 进行抢地主")).toBeInTheDocument();
+  });
+
+  it("keeps the game usable when rules loading fails", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => ok(bidState))
+      .mockImplementationOnce(() => fail(500));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    expect(await screen.findByText("P0 进行叫地主")).toBeInTheDocument();
+    expect(await screen.findByText("规则加载失败：request failed: 500")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "叫地主" })).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import (
 
 	"agent-dou-dizhu/internal/tiandi/domain"
 	"agent-dou-dizhu/internal/tiandi/fsm"
+	"agent-dou-dizhu/internal/tiandi/rules"
 	"agent-dou-dizhu/internal/tiandi/sortx"
 )
 
@@ -108,6 +109,10 @@ func (s *Service) Apply(req ActionRequest) (StateResponse, error) {
 	}
 
 	return buildState(s.machine.Snapshot()), nil
+}
+
+func (s *Service) Rules() rules.Catalog {
+	return rules.CatalogData()
 }
 
 type DemoResponse struct {

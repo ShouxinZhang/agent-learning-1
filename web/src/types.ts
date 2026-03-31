@@ -32,3 +32,42 @@ export type GameState = {
     cards: DemoCard[];
   };
 };
+
+export type RuleHand = {
+  key: string;
+  name: string;
+  pattern: string;
+  description: string;
+  minCards?: number;
+  notes?: string[];
+};
+
+export type RuleSection = {
+  key: string;
+  title: string;
+  items: RuleHand[];
+};
+
+export type BombPriority = {
+  rank: number;
+  key: string;
+  name: string;
+  description: string;
+  notes?: string[];
+};
+
+export type HandPriorityRef = {
+  rank: number;
+  key: string;
+  name: string;
+};
+
+export type RulesCatalog = {
+  version: string;
+  rankOrder: string[];
+  sequenceHigh: string;
+  notes: string[];
+  sections: RuleSection[];
+  bombPriority: BombPriority[];
+  handPriority: HandPriorityRef[];
+};
